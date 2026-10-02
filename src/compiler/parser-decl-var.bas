@@ -1,4 +1,4 @@
-'' variable declarations (DIM, REDIM, COMMON, EXTERN or STATIC)
+﻿'' variable declarations (DIM, REDIM, COMMON, EXTERN or STATIC)
 ''
 '' chng: sep/2004 written [v1ctor]
 
@@ -65,10 +65,13 @@ sub hSymbolType _
 		byref subtype as FBSYMBOL ptr, _
 		byref lgt as longint, _
 		byval is_byref as integer, _
-		byval is_extends as integer _
+		byval is_extends as integer, _
+		byref is_dynwstring as integer _
 	)
 
 	dim as integer options = FB_SYMBTYPEOPT_DEFAULT
+	is_dynwstring = FALSE
+
 	if( is_byref ) then
 		options and= not FB_SYMBTYPEOPT_CHECKSTRPTR
 		options or= FB_SYMBTYPEOPT_ISBYREF
@@ -77,13 +80,20 @@ sub hSymbolType _
 		options and= not FB_SYMBTYPEOPT_CHECKSTRPTR
 	end if
 
-	'' parse the symbol type (INTEGER, STRING, etc...)
+	'' Parse the complete type once. cSymbolType() owns the managed/raw split:
+	'' bare WString is FBWSTRING; * N/PTR suffixes are raw WCHAR storage.
 	if( cSymbolType( dtype, subtype, lgt, , options ) = FALSE ) then
 		errReport( FB_ERRMSG_EXPECTEDIDENTIFIER )
 		'' error recovery: fake a type
 		dtype = FB_DATATYPE_INTEGER
 		subtype = NULL
 		lgt = typeGetSize( dtype )
+	end if
+
+	'' This flag means descriptor owner/storage, not merely WSTRING type.
+	'' A BYREF variable aliases somebody else's descriptor.
+	if( typeGetDtAndPtrOnly( dtype ) = FB_DATATYPE_WSTRING ) then
+		is_dynwstring = (not is_byref)
 	end if
 
 	'' ANY?
@@ -891,7 +901,13 @@ private sub hValidateGlobalVarInit( byval sym as FBSYMBOL ptr, byref initree as 
 
 	'' Check for constant initializer?
 	'' (doing this check first, it results in a nicer error message)
-	if( (not symbHasCtor( sym )) or symbIsRef( sym ) ) then
+	'' Native counted-WSTRING scalars/arrays are descriptor owners just like
+	'' objects: initialization may execute allocation/copy code.  Permit a
+	'' non-constant TYPEINI and emit it through the global/static ctor path
+	'' instead of trying to place descriptor contents directly into .data.
+	var is_dynwstring_owner = ((symbGetType( sym ) = FB_DATATYPE_WSTRING) and _
+	                           (not symbIsRef( sym )))
+	if( ((not symbHasCtor( sym )) and (not is_dynwstring_owner)) or symbIsRef( sym ) ) then
 		if( astTypeIniIsConst( initree ) = FALSE ) then
 			errReport( FB_ERRMSG_EXPECTEDCONST )
 			astDelTree( initree )
@@ -1054,8 +1070,11 @@ private function hVarInit _
 			exit function
 		end if
 
-		'' don't allow var-len strings
-		if( symbGetType( sym ) = FB_DATATYPE_STRING ) then
+		'' Disallow ANY for managed variable-length string owners.
+		'' Bare WSTRING mirrors STRING here; explicit WString Ptr
+		'' pointer slots and fixed WString*N raw buffers remain outside
+		'' this managed-owner case.
+		if( symbTypeIsManagedStringOwner( symbGetType( sym ) ) ) then
 			errReport( FB_ERRMSG_INVALIDDATATYPES )
 		else
 			symbSetDontInit( sym )
@@ -1231,8 +1250,9 @@ private function hFlushInitializer _
 	) as ASTNODE ptr
 
 	'' object?
-	if( has_dtor and (not symbIsRef( sym )) ) then
-		'' Check visibility of the destructor
+	if( has_dtor and (not symbIsRef( sym )) and symbHasDtor( sym ) ) then
+		'' Check visibility of an actual UDT destructor. Native WSTRING uses
+		'' an RTL delete routine instead of a component destructor symbol.
 		if( symbCheckAccess( symbGetCompDtor1( symbGetSubtype( sym ) ) ) = FALSE ) then
 			errReport( FB_ERRMSG_NOACCESSTODTOR )
 		end if
@@ -1270,8 +1290,12 @@ private function hFlushInitializer _
 		return astNewLINK( var_decl, astTypeIniFlush( sym, initree, FALSE, AST_OPOPT_ISINI ), AST_LINK_RETURN_NONE )
 	end if
 
-	'' not an object?
-	if( symbIsRef( sym ) or (not symbHasCtor( sym )) ) then
+	'' not an object? Native counted-WSTRING scalars/arrays are a deliberate
+	'' exception: their TYPEINI may contain executable deep-copy operations and
+	'' must therefore stay attached to the ctor path.
+	var is_dynwstring_owner = ((symbGetType( sym ) = FB_DATATYPE_WSTRING) and _
+	                           (not symbIsRef( sym )))
+	if( symbIsRef( sym ) or ((not symbHasCtor( sym )) and (not is_dynwstring_owner)) ) then
 		'' No constructor call needed
 		'' let emit flush it..
 		symbSetTypeIniTree( sym, initree )
@@ -1393,6 +1417,10 @@ function cVarDecl _
 	dim as integer addsuffix = any, is_multdecl = any, have_bounds = any
 	dim as integer is_typeless = any, is_declared = any, is_redim = any
 	dim as integer dtype = any, maybe_expr = any
+	dim as integer is_dynwstring = FALSE, mult_dynwstring = FALSE
+	dim as ASTNODE ptr dynw_init = NULL
+	dim as integer dynw_init_managed_rhs = FALSE
+	dim as integer dynw_static_init = FALSE
 	dim as longint lgt = any
 	dim as integer dimensions = any, suffix = any
 	dim as zstring ptr palias = any
@@ -1418,7 +1446,7 @@ function cVarDecl _
 		lexSkipToken( LEXCHECK_POST_SUFFIX )
 
 		'' parse the symbol type (INTEGER, STRING, etc...)
-		hSymbolType( dtype, subtype, lgt, has_byref_at_start )
+		hSymbolType( dtype, subtype, lgt, has_byref_at_start, FALSE, mult_dynwstring )
 
 		if( has_byref_at_start = FALSE ) then
 			'' Disallow creating objects of abstract classes
@@ -1437,6 +1465,10 @@ function cVarDecl _
 
 	do
 		dim as integer attrib = baseattrib
+		is_dynwstring = iif( is_multdecl, mult_dynwstring, FALSE )
+		dynw_init = NULL
+		dynw_init_managed_rhs = FALSE
+		dynw_static_init = FALSE
 
 		if( is_multdecl = FALSE ) then
 			'' 1st SingleVarDecl has BYREF?
@@ -1619,7 +1651,7 @@ function cVarDecl _
 				var is_ref = ((attrib and FB_SYMBATTRIB_REF) <> 0)
 
 				'' parse the symbol type (INTEGER, STRING, etc...)
-				hSymbolType( dtype, subtype, lgt, is_ref )
+				hSymbolType( dtype, subtype, lgt, is_ref, FALSE, is_dynwstring )
 
 				if( is_ref = FALSE ) then
 					'' Disallow creating objects of abstract classes
@@ -1656,6 +1688,12 @@ function cVarDecl _
 				end if
 			end if
 		end if
+
+		'' Native dynamic WSTRING supports automatic/local, STATIC, SHARED, EXTERN
+		'' and COMMON descriptor storage. COMMON scalar/array declarations are
+		'' linker-merged; each declaring TU may register cleanup.  Dynamic array
+		'' element teardown + descriptor reset are idempotent across repeated TU
+		'' exit cleanup.  Normal COMMON rules still reject initial bounds/initializers.
 
 		if( varexpr ) then
 			sym = varexpr->sym
@@ -1708,6 +1746,21 @@ function cVarDecl _
 			else
 				'' -lang fb: typeless REDIM without pre-existing array not allowed
 				hErrorDefTypeNotAllowed( dtype, subtype, lgt )
+			end if
+		end if
+
+		'' REDIM'ing an existing fixed-len array with an explicit data type?
+		'' (the typeless REDIM case was handled above; this catches the ones
+		'' with an AS/suffix, which otherwise would be silently redeclared
+		'' as a new var-len array below - shadowing the fixed-len array if
+		'' it's visible from an outer scope, losing all data of the
+		'' existing elements)
+		if( (sym <> NULL) and (token = FB_TK_REDIM) ) then
+			if( symbIsArray( sym ) and (symbIsDynamic( sym ) = FALSE) ) then
+				'' if it's a parameter, we won't know if it's dynamic or not until run-time
+				if( symbIsParamVarByDesc( sym ) = FALSE ) then
+					errReportEx( FB_ERRMSG_EXPECTEDDYNAMICARRAY, @id )
+				end if
 			end if
 		end if
 
@@ -1779,6 +1832,7 @@ function cVarDecl _
 		sym = hAddVar( sym, parent, id, palias, dtype, subtype, lgt, addsuffix, _
 		               attrib, dimensions, have_bounds, dTB(), token )
 
+
 		dim as integer has_defctor = FALSE, has_dtor = FALSE
 		if( sym <> NULL ) then
 			'' Treat dynamic array fields as "already declared",
@@ -1786,6 +1840,12 @@ function cVarDecl _
 			is_declared = iif( symbIsField( sym ), TRUE, symbGetIsDeclared( sym ) )
 			has_defctor = symbHasDefCtor( sym )
 			has_dtor = symbHasDtor( sym )
+			'' STATIC/SHARED/COMMON native WSTRING descriptors may acquire heap storage
+			'' later even without an initializer, so always register cleanup. COMMON
+			'' may register from multiple TUs; the runtime delete is idempotent.
+			if( is_dynwstring and ((attrib and (FB_SYMBATTRIB_STATIC or FB_SYMBATTRIB_SHARED or FB_SYMBATTRIB_COMMON)) <> 0) ) then
+				has_dtor = TRUE
+			end if
 		else
 			is_declared = FALSE
 		end if
@@ -1800,7 +1860,36 @@ function cVarDecl _
 
 			'' '=' | '=>' ?
 			if( hIsAssignToken( lexGetToken( ) ) ) then
-				initree = hVarInit( sym, is_declared )
+				if( is_dynwstring and (dimensions = 0) and (sym <> NULL) and _
+				    (not symbIsCommon( sym )) and (not symbIsExtern( sym )) ) then
+					'' Native counted-WSTRING initialization requires executable allocation/copy.
+					'' Do not bypass the ordinary EXTERN/COMMON initializer rejection:
+					'' an EXTERN declaration is not the owning definition, so it cannot run
+					'' the descriptor allocation/copy init path.
+					'' The RHS producer determines its own string-family AST type; the
+					'' destination does not select representation during parsing.
+					lexSkipToken( )
+					var dynexpr = cExpression( )
+					if( dynexpr = NULL ) then
+						errReport( FB_ERRMSG_EXPECTEDEXPRESSION )
+					else
+						dynw_init_managed_rhs = (astGetDataType( dynexpr ) = FB_DATATYPE_WSTRING)
+						'' Route explicit native-WSTRING initialization through the normal
+						'' assignment builder. This preserves the direct descriptor assignment
+						'' path while also allowing implicit operator/cast overload resolution
+						' before the native WSTRING copy (e.g. Operator Cast() As WString).
+						dynw_init = astNewASSIGN( astNewVAR( sym ), dynexpr, AST_OPOPT_ISINI )
+						if( dynw_init = NULL ) then
+							errReport( FB_ERRMSG_INVALIDDATATYPES, TRUE )
+						elseif( symbIsStatic( sym ) and symbIsLocal( sym ) and _
+						        ((symbGetAttrib( sym ) and (FB_SYMBATTRIB_SHARED or FB_SYMBATTRIB_COMMON)) = 0) ) then
+							dynw_static_init = TRUE
+						end if
+					end if
+					initree = NULL
+				else
+					initree = hVarInit( sym, is_declared )
+				end if
 
 				if( ( initree <> NULL ) and ( fbLangOptIsSet( FB_LANG_OPT_SCOPE ) = FALSE ) ) then
 					'' local?
@@ -1869,7 +1958,21 @@ function cVarDecl _
 
 					'' Don't init if it's a temp FOR var, it will
 					'' have the start condition put into it.
-					t = astNewDECL( sym, ((initree = NULL) and (not is_fordecl)) )
+					'' Native counted-WSTRING fixed arrays need their descriptor slots
+					'' zeroed before an element initializer assigns into them.  Normal
+					'' TYPEINI suppresses default initialization when an initializer is
+					'' present, which would otherwise leave local descriptor pointers
+					'' uninitialized before fb_WstrDynAssign().
+					dim as integer force_dynw_array_zero = (is_dynwstring and (dimensions > 0) and _
+					                                      ((attrib and FB_SYMBATTRIB_DYNAMIC) = 0))
+					'' A scalar managed WSTRING with an explicit initializer is initialized
+					'' by fb_WstrDynInit()/MoveInit(), exactly like STRING's fb_StrInit():
+					'' no preliminary descriptor memset is required.
+					dim as integer needs_default_init = (((initree = NULL) or force_dynw_array_zero) and (not is_fordecl))
+					if( is_dynwstring and (dimensions = 0) and dynw_init_managed_rhs and (dynw_init <> NULL) ) then
+						needs_default_init = FALSE
+					end if
+					t = astNewDECL( sym, needs_default_init )
 
 					'' add the descriptor too, if any
 					desc = symbGetArrayDescriptor( sym )
@@ -1908,11 +2011,11 @@ function cVarDecl _
 
 					if( fbLangOptIsSet( FB_LANG_OPT_SCOPE ) ) then
 						'' flush the init tree (must be done after adding the decl node)
-						t = hFlushInitializer( sym, t, initree, has_dtor )
+						t = hFlushInitializer( sym, t, initree, iif( dynw_static_init, FALSE, has_dtor ) )
 					'' unscoped
 					else
 						'' flush the init tree (must be done after adding the decl node)
-						astAddUnscoped( hFlushInitializer( sym, t, initree, has_dtor ) )
+						astAddUnscoped( hFlushInitializer( sym, t, initree, iif( dynw_static_init, FALSE, has_dtor ) ) )
 						t = NULL
 
 						'' initializer as assignment?
@@ -1926,6 +2029,18 @@ function cVarDecl _
 							t = astNewLINK( t, astTypeIniFlush( sym, assign_initree, FALSE, AST_OPOPT_ISINI ), AST_LINK_RETURN_NONE )
 						end if
 					end if
+				end if
+
+				if( dynw_init <> NULL ) then
+					if( dynw_static_init ) then
+						'' Keep initializer temps and atexit registration on the SAME
+						'' first-entry path; hWrapInStaticFlag() then destroys those temps
+						'' only after the descriptor assignment has consumed them.
+						var statdtor = astProcAddStaticInstance( sym )
+						dynw_init = astNewLINK( dynw_init, rtlAtExit( astBuildProcAddrof( statdtor ) ), AST_LINK_RETURN_NONE )
+						dynw_init = hWrapInStaticFlag( dynw_init )
+					end if
+					t = astNewLINK( t, dynw_init, AST_LINK_RETURN_NONE )
 				end if
 
 				'' Dynamic array? If the dimensions are known, redim it.
@@ -2259,16 +2374,10 @@ private sub cAutoVarDecl( byval baseattrib as FB_SYMBATTRIB )
 		if( is_byref = FALSE ) then
 			select case( typeGetDtAndPtrOnly( dtype ) )
 			case FB_DATATYPE_WCHAR
-				'' wstrings: can't make a "wstring variable" to hold this expression,
-				'' because 1) we don't have dynamic wstrings yet, and 2) we can't use
-				'' a fixed-length wstring because we don't know the length (it may not
-				'' even be constant).
-				'' TODO: could allow VAR initialized with a wstring literal, then the length is known
-				errReport( FB_ERRMSG_INVALIDDATATYPES, TRUE )
-				'' error recovery: create a fake expression
-				astDelTree( expr )
-				expr = astNewCONSTi( 0 )
-				dtype = FB_DATATYPE_INTEGER
+				'' A non-BYREF VAR needs owning storage for a legacy WSTRING expression.
+				'' Native counted-WSTRING now provides exactly that storage; keep BYREF
+				'' inference untouched so historical WCHAR reference semantics remain intact.
+				dtype = FB_DATATYPE_WSTRING
 				subtype = NULL
 
 			case FB_DATATYPE_CHAR, FB_DATATYPE_FIXSTR
@@ -2296,8 +2405,11 @@ private sub cAutoVarDecl( byval baseattrib as FB_SYMBATTRIB )
 				expr = hCheckAndBuildAutoVarInitializer( sym, expr )
 			end if
 
-			'' add to AST
-			dim as ASTNODE ptr var_decl = astNewDECL( sym, FALSE )
+			'' add to AST.  A VAR inferred from a legacy WSTRING expression is now a
+			'' native counted-WSTRING owner; zero its descriptor before the initializer
+			'' assignment, exactly like an explicit DIM AS WSTRING declaration.
+			var zero_dynwstring = ((symbGetType( sym ) = FB_DATATYPE_WSTRING) and (not symbIsRef( sym )))
+			dim as ASTNODE ptr var_decl = astNewDECL( sym, zero_dynwstring )
 
 			'' set as declared
 			symbSetIsDeclared( sym )

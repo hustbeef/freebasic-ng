@@ -235,17 +235,15 @@ private function hOptConstAccum2( byval n as ASTNODE ptr ) as ASTNODE ptr
 
 		select case n->op.op
 		case AST_OP_ADD
-			'' don't mess with strings..
-			select case as const astGetDataType( n )
-			case FB_DATATYPE_STRING, FB_DATATYPE_FIXSTR, _
-				 FB_DATATYPE_WCHAR
-
-			case else
+			'' don't mess with any managed/fixed/raw string-family value.
+			'' Dynamic bare WSTRING is a managed owner like STRING, so use
+			'' the central classifier instead of maintaining a local dtype list.
+			if( symbTypeIsStringLike( astGetDataType( n ) ) = FALSE ) then
 				n = hConstAccumADDSUB( n, accumval, 1 )
 				if( accumval ) then
 					n = astNewBOP( AST_OP_ADD, n, accumval )
 				end if
-			end select
+			end if
 
 		case AST_OP_MUL
 			n = hConstAccumMUL( n, accumval )
@@ -635,12 +633,10 @@ private function hOptAssocADD _
 		select case op
 		case AST_OP_ADD, AST_OP_SUB
 
-			'' don't mess with strings..
-			select case astGetDataType( n )
-			case FB_DATATYPE_STRING, FB_DATATYPE_FIXSTR, _
-				 FB_DATATYPE_WCHAR
-
-			case else
+			'' don't reassociate any string-family concat tree.  This mirrors
+			'' the ARCH6 managed-owner/raw-boundary classification instead of
+			'' locally enumerating STRING/FIXSTR/WCHAR/WSTRING again.
+			if( symbTypeIsStringLike( astGetDataType( n ) ) = FALSE ) then
 				r = n->r
 				if( r->class = AST_NODECLASS_BOP ) then
 					rop = r->op.op
@@ -670,7 +666,7 @@ private function hOptAssocADD _
 						astDelNode( n_old )
 					end select
 				end if
-			end select
+			end if
 
 		end select
 	end if
@@ -1790,6 +1786,167 @@ private function hOptStrAssignment _
 	astDelNode( n )
 end function
 
+private function hOptDynWstrMultConcat _
+	( _
+		byval lnk as ASTNODE ptr, _
+		byval dst as ASTNODE ptr, _
+		byval n as ASTNODE ptr _
+	) as ASTNODE ptr
+
+	if( n = NULL ) then
+		return NULL
+	end if
+
+	'' Managed-WSTRING-only mirror of hOptStrMultConcat().  Keep the mature
+	'' STRING helper untouched; only the runtime calls differ here.
+	if( n->l <> NULL ) then
+		if( n->l->class = AST_NODECLASS_BOP ) then
+			lnk = hOptDynWstrMultConcat( lnk, dst, n->l )
+			n->l = NULL
+		end if
+	end if
+
+	if( n->class = AST_NODECLASS_BOP ) then
+		if( n->l <> NULL ) then
+			if( lnk = NULL ) then
+				lnk = rtlDynWstrAssign( astCloneTree( dst ), n->l )
+			else
+				lnk = astNewLINK( lnk, _
+					rtlDynWstrConcatAssign( astCloneTree( dst ), n->l ), _
+					AST_LINK_RETURN_NONE )
+			end if
+		end if
+
+		if( n->r <> NULL ) then
+			lnk = astNewLINK( lnk, _
+				rtlDynWstrConcatAssign( astCloneTree( dst ), n->r ), _
+				AST_LINK_RETURN_NONE )
+		end if
+
+		astDelNode( n )
+	else
+		if( lnk = NULL ) then
+			lnk = rtlDynWstrAssign( astCloneTree( dst ), n )
+		else
+			lnk = astNewLINK( lnk, _
+				rtlDynWstrConcatAssign( astCloneTree( dst ), n ), _
+				AST_LINK_RETURN_NONE )
+		end if
+	end if
+
+	function = lnk
+end function
+
+private function hIsDynWstrDirectPairVar( byval n as ASTNODE ptr ) as integer
+	if( n = NULL ) then return FALSE
+	if( astGetDataType( n ) <> FB_DATATYPE_WSTRING ) then return FALSE
+	if( astGetResultTempSym( n ) <> NULL ) then return FALSE
+	select case as const n->class
+	case AST_NODECLASS_VAR
+		return TRUE
+	case AST_NODECLASS_DEREF
+		'' ByRef parameters lower as DEREF(VAR).  Keep arbitrary pointer
+		'' expressions out of this optimization so argument evaluation remains
+		'' side-effect free and runtime alias checks are sufficient.
+		return (n->l <> NULL) andalso (n->l->class = AST_NODECLASS_VAR)
+	end select
+	return FALSE
+end function
+
+private function hOptDynWstrAssignment _
+	( _
+		byval n as ASTNODE ptr, _
+		byval l as ASTNODE ptr, _
+		byval r as ASTNODE ptr _
+	) as ASTNODE ptr
+
+	dim as integer optimize = FALSE
+
+	assert( symbTypeUsesDynamicWstrOps( astGetDataType( n ) ) )
+
+	'' PERF3: direct managed-descriptor pair concat for plain variables only.
+	'' Restricting dst/lhs/rhs to simple variable-backed nodes keeps evaluation
+	'' side-effect free;
+	'' runtime descriptor-identity checks then cover every ByRef alias pattern.
+	if( astIsBOP( r, AST_OP_ADD ) ) then
+		if( hIsDynWstrDirectPairVar( l ) andalso _
+		    hIsDynWstrDirectPairVar( r->l ) andalso _
+		    hIsDynWstrDirectPairVar( r->r ) ) then
+			dim as ASTNODE ptr lhs = r->l, rhs = r->r
+			r->l = NULL
+			r->r = NULL
+			astDelNode( r )
+			function = rtlDynWstrConcatAssignPair( l, lhs, rhs )
+			astDelNode( n )
+			exit function
+		end if
+	end if
+
+	'' Conservative self-concat optimization for direct managed descriptors.
+	'' ByRef/deref cases stay unoptimized for now; they can be added only after
+	'' their alias contract is reviewed explicitly.
+	if( r->class = AST_NODECLASS_BOP ) then
+		select case as const l->class
+		case AST_NODECLASS_VAR, AST_NODECLASS_IDX
+			if( astIsTreeEqual( l, r->l ) ) then
+				dim as FBSYMBOL ptr sym = astGetSymbol( l )
+				if( sym <> NULL ) then
+					if( symbIsParamVarBydescOrByref( sym ) = FALSE ) then
+						optimize = (astIsSymbolOnTree( sym, r->r ) = FALSE)
+					end if
+				end if
+			end if
+
+		case AST_NODECLASS_FIELD, AST_NODECLASS_IIF
+			if( l->l <> NULL ) then
+				select case as const l->l->class
+				case AST_NODECLASS_VAR, AST_NODECLASS_IDX
+					if( astIsTreeEqual( l, r->l ) ) then
+						dim as FBSYMBOL ptr sym = astGetSymbol( l )
+						if( sym <> NULL ) then
+							optimize = (astIsSymbolOnTree( sym, r->r ) = FALSE)
+						end if
+					end if
+				end select
+			end if
+		end select
+	end if
+
+	if( optimize ) then
+		astDelNode( n )
+		n = r
+		astDelTree( l )
+		l = n->l
+		r = n->r
+
+		if( hIsMultStrConcat( l, r ) ) then
+			function = hOptDynWstrMultConcat( l, l, r )
+		else
+			function = rtlDynWstrConcatAssign( l, astUpdStrConcat( r ) )
+		end if
+	else
+		optimize = hIsMultStrConcat( l, r )
+		if( optimize ) then
+			function = hOptDynWstrMultConcat( NULL, l, r )
+		else
+			r = astUpdStrConcat( r )
+			if( r = NULL ) then
+				function = NULL
+			elseif( astGetResultTempSym( r ) <> NULL ) then
+				'' Only a compiler-proven disposable result temporary may transfer
+				'' ownership into an already-initialized destination.  This keeps
+				'' ByRef/deref alias cases safe: the concat is fully materialized
+				'' before the old destination payload is released.
+				function = rtlDynWstrMoveAssign( l, r )
+			else
+				function = rtlDynWstrAssign( l, r )
+			end if
+		end if
+	end if
+
+	astDelNode( n )
+end function
+
 function astOptAssignment( byval n as ASTNODE ptr ) as ASTNODE ptr
 	dim as ASTNODE ptr l = any, r = any
 	dim as integer dtype = any, dclass = any
@@ -1821,12 +1978,14 @@ function astOptAssignment( byval n as ASTNODE ptr ) as ASTNODE ptr
 
 	dtype = astGetFullType( n )
 
-	'' strings?
-	select case typeGet( dtype )
-	case FB_DATATYPE_STRING, FB_DATATYPE_FIXSTR, _
-		 FB_DATATYPE_WCHAR
+	'' String-family assignment optimization is selected through shared
+	'' classifiers.  Dynamic managed WSTRING must stay on its owner-aware DWSTR
+	'' path; legacy STRING/FIXSTR/raw-WCHAR keeps the established optimizer.
+	if( symbTypeUsesDynamicWstrOps( dtype ) ) then
+		return hOptDynWstrAssignment( n, l, r )
+	elseif( symbTypeUsesLegacyStrConcatOps( dtype ) ) then
 		return hOptStrAssignment( n, l, r )
-	end select
+	end if
 
 	dclass = typeGetClass( dtype )
 	if( dclass = FB_DATACLASS_INTEGER ) then

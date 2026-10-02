@@ -50,6 +50,13 @@ function cOperatorNew( ) as ASTNODE ptr
 	case FB_DATATYPE_FIXSTR, FB_DATATYPE_CHAR, FB_DATATYPE_WCHAR
 		errReport( FB_ERRMSG_NEWCANTBEUSEDWITHFIXLENSTRINGS, TRUE )
 		dtype = FB_DATATYPE_STRING
+
+	case FB_DATATYPE_WSTRING
+		'' Legacy ABI: NEW WString allocates raw WCHAR storage (one code
+		'' unit, or N units with NEW WString[N]), matching the raw
+		'' WString Ptr boundary it is assigned to.  Managed heap owners
+		'' are plain Dim variables, not NEW expressions.
+		dtype = FB_DATATYPE_WCHAR
 	end select
 
 	'' Disallow creating objects of abstract classes
@@ -87,8 +94,11 @@ function cOperatorNew( ) as ASTNODE ptr
 					errReportWarn( FB_WARNINGMSG_ANYINITHASNOEFFECT )
 				end if
 
-				'' Disallow ANY for STRING, like cVarDecl()
-				if( typeGetDtAndPtrOnly( dtype ) = FB_DATATYPE_STRING ) then
+				'' Disallow ANY for managed variable-length string owners,
+				'' like cVarDecl().  Bare WSTRING mirrors STRING here; real
+				'' WString*N/Ptr raw boundaries are represented by FIXSTR/WCHAR
+				'' forms or pointer types and do not enter this owner case.
+				if( symbTypeIsManagedStringOwner( dtype ) ) then
 					errReport( FB_ERRMSG_INVALIDDATATYPES )
 				else
 					do_clear = FALSE
@@ -171,8 +181,11 @@ function cOperatorNew( ) as ASTNODE ptr
 				'' '('
 				lexSkipToken( )
 
-				'' Disallow ANY for STRING, like cVarDecl()
-				if( typeGetDtAndPtrOnly( dtype ) = FB_DATATYPE_STRING ) then
+				'' Disallow ANY for managed variable-length string owners,
+				'' like cVarDecl().  Bare WSTRING mirrors STRING here; real
+				'' WString*N/Ptr raw boundaries are represented by FIXSTR/WCHAR
+				'' forms or pointer types and do not enter this owner case.
+				if( symbTypeIsManagedStringOwner( dtype ) ) then
 					errReport( FB_ERRMSG_INVALIDDATATYPES )
 				else
 					do_clear = FALSE

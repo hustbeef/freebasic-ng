@@ -127,20 +127,24 @@ function typeCalcNaturalAlign _
 
 	dim as integer align = any
 
-	select case as const( typeGet( dtype ) )
-	'' UDT? its natural alignment depends on the largest field
-	case FB_DATATYPE_STRUCT
-		align = subtype->udt.natalign
-
-	'' var-len string: largest field is the pointer at the front
-	case FB_DATATYPE_STRING
+	'' Managed string owners are descriptor values whose leading field is a
+	'' pointer, so their natural ABI alignment is pointer-sized.  Keep this
+	'' policy tied to the shared owner classifier rather than duplicating the
+	'' STRING/WSTRING pair here.
+	if( symbTypeIsManagedStringOwner( dtype ) ) then
 		align = env.pointersize
+	else
+		select case as const( typeGet( dtype ) )
+		'' UDT? its natural alignment depends on the largest field
+		case FB_DATATYPE_STRUCT
+			align = subtype->udt.natalign
 
-	case else
-		'' Anything else (including zstring/wstring/fixlen strings)
-		'' use the base type's size (e.g. character size of strings)
-		align = typeGetSize( dtype )
-	end select
+		case else
+			'' Anything else (including zstring/raw/fixed WSTRING storage)
+			'' use the base type's size (e.g. character size of strings)
+			align = typeGetSize( dtype )
+		end select
+	end if
 
 	'' LONGINT/DOUBLE are 4-byte aligned on 32bit x86 Linux/DOS/BSD,
 	'' but 8-byte aligned on other systems (Win32/Win64, 64bit Linux/BSD,
@@ -475,18 +479,6 @@ function symbAddField _
 		symbSetUDTHasZeroedField( parent )
 	else
 		select case( typeGetDtAndPtrOnly( dtype ) )
-		'' var-len string fields? must add a ctor, copyctor and dtor
-		case FB_DATATYPE_STRING
-			'' not allowed inside unions or anonymous nested structs/unions
-			if( symbGetUDTIsUnionOrAnon( parent ) ) then
-				errReport( FB_ERRMSG_VARLENSTRINGINUNION )
-			else
-				symbSetUDTHasCtorField( parent )
-				symbSetUDTHasDtorField( parent )
-				symbSetUDTHasPtrField( parent )
-			end if
-			symbSetUDTHasZeroedField( parent )
-
 		'' struct with a ctor or dtor? must add a ctor or dtor too
 		case FB_DATATYPE_STRUCT
 			'' Let the FB_UDTOPT_HASPTRFIELD flag propagate up to the
@@ -537,14 +529,29 @@ function symbAddField _
 			end if
 
 		case else
-			'' only the first field in a UNION can decide if it will be zeroed or filled
-			if( symbGetUDTIsUnion( parent ) ) then
-				if( (symbGetUDTHasFilledField( parent ) = FALSE) andalso _
-				    (symbGetUDTHasZeroedField( parent ) = FALSE) ) then
+			'' Managed string-owner fields own heap storage, so the parent needs
+			'' implicit ctor/copy/LET/dtor members. The concrete narrow/wide
+			'' runtime dispatch remains separate elsewhere.
+			if( symbTypeIsManagedStringOwner( dtype ) ) then
+				'' not allowed inside unions or anonymous nested structs/unions
+				if( symbGetUDTIsUnionOrAnon( parent ) ) then
+					errReport( FB_ERRMSG_VARLENSTRINGINUNION )
+				else
+					symbSetUDTHasCtorField( parent )
+					symbSetUDTHasDtorField( parent )
+					symbSetUDTHasPtrField( parent )
+				end if
+				symbSetUDTHasZeroedField( parent )
+			else
+				'' only the first field in a UNION can decide if it will be zeroed or filled
+				if( symbGetUDTIsUnion( parent ) ) then
+					if( (symbGetUDTHasFilledField( parent ) = FALSE) andalso _
+					    (symbGetUDTHasZeroedField( parent ) = FALSE) ) then
+						symbSetUDTHasZeroedField( parent )
+					end if
+				else
 					symbSetUDTHasZeroedField( parent )
 				end if
-			else
-				symbSetUDTHasZeroedField( parent )
 			end if
 
 		end select

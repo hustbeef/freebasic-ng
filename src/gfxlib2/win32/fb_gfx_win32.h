@@ -69,9 +69,7 @@ extern const GFXDRIVER fb_gfxDriverD2D;
 extern const GFXDRIVER fb_gfxDriverDirectDraw;
 #endif
 extern const GFXDRIVER fb_gfxDriverGDI;
-#ifndef DISABLE_OPENGL
 extern const GFXDRIVER fb_gfxDriverOpenGL;
-#endif
 
 extern LRESULT CALLBACK fb_hWin32WinProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 extern void fb_hHandleMessages(void);

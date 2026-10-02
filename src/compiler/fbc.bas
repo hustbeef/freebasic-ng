@@ -16,8 +16,6 @@
 	#define ENABLE_GORC
 #endif
 
-const FB_DARWIN_MIN_OS = "11.0"
-
 enum
 	PRINT_HOST
 	PRINT_TARGET
@@ -91,9 +89,6 @@ type FBCCTX
 	'' with the same input libs)
 	finallibs           as TSTRSET
 	finallibpaths       as TSTRSET
-	'' Darwin frameworks are linker arguments, not -l libraries. Keep them
-	'' separate so the generic library loop never turns Cocoa into -lCocoa.
-	darwinframeworks    as TSTRSET
 
 	outname             as zstring * FB_MAXPATHLEN+1
 	mainname            as zstring * FB_MAXPATHLEN+1
@@ -220,7 +215,6 @@ private sub fbcInit( )
 
 	strsetInit(@fbc.finallibs, FBC_INITFILES\2)
 	strsetInit(@fbc.finallibpaths, FBC_INITFILES\2)
-	strsetInit(@fbc.darwinframeworks, FBC_INITFILES\4)
 
 	fbGlobalInit()
 
@@ -264,12 +258,7 @@ private sub hSetOutName( )
 		select case( fbGetOption( FB_COMPOPT_TARGET ) )
 		case FB_COMPTARGET_CYGWIN, FB_COMPTARGET_WIN32
 			fbc.outname += ".dll"
-		case FB_COMPTARGET_DARWIN
-			'' Mach-O shared libraries are .dylib; .so is reserved for
-			'' loadable bundles there.
-			fbc.outname = hStripFilename( fbc.outname ) + _
-				"lib" + hStripPath( fbc.outname ) + ".dylib"
-		case FB_COMPTARGET_LINUX, _
+		case FB_COMPTARGET_LINUX, FB_COMPTARGET_DARWIN, _
 		     FB_COMPTARGET_FREEBSD, FB_COMPTARGET_OPENBSD, _
 		     FB_COMPTARGET_NETBSD, FB_COMPTARGET_DRAGONFLY, _
 		     FB_COMPTARGET_SOLARIS, FB_COMPTARGET_ANDROID
@@ -315,12 +304,8 @@ private function hGet1stOutputLineFromCommand( byref cmd as string ) as string
 		exit function
 	end if
 
-	'' LINE INPUT, not INPUT: a tool prints a path, not a data record, and
-	'' INPUT would end the field at the first comma and strip the quotes
-	'' around it, which is how a path like /opt/gcc,15/lib/libgcc.a loses
-	'' everything from the comma on.
 	dim ln as string
-	line input #f, ln
+	input #f, ln
 
 	close f
 	return ln
@@ -358,11 +343,8 @@ private function fbcQueryCC( byref options as string ) as string
 		exit function
 	end if
 
-	'' LINE INPUT for the same reason as in hGet1stOutputLineFromCommand():
-	'' the answer is a path, and INPUT would cut it at a comma.  This is the
-	'' query that hands the compiler runtime to the win32 aarch64 link line.
 	dim ret as string
-	line input #ff, ret
+	input #ff, ret
 
 	close ff
 
@@ -783,22 +765,11 @@ private function fbcIsUsingGoldLinker( ) as integer
 end function
 
 private function hLinkFiles( ) as integer
-	dim as string ldcline, dllname, deffile, coff_runtime
-	dim as integer coff_linker = _
-		(fbGetOption( FB_COMPOPT_TARGET ) = FB_COMPTARGET_WIN32) and _
-		(fbGetCpuFamily( ) = FB_CPUFAMILY_AARCH64)
+	dim as string ldcline, dllname, deffile
 
 	function = FALSE
 
 	hSetOutName( )
-
-	if( coff_linker ) then
-		coff_runtime = fbcQueryCC( " -print-libgcc-file-name" )
-		if( (len( coff_runtime ) = 0) or (hFileExists( coff_runtime ) = FALSE) ) then
-			errReportEx( FB_ERRMSG_FILENOTFOUND, "compiler runtime", -1 )
-			exit function
-		end if
-	end if
 
 	select case( fbGetOption( FB_COMPOPT_TARGET ) )
 	case FB_COMPTARGET_WIN32
@@ -866,17 +837,10 @@ private function hLinkFiles( ) as integer
 			ldcline += "-arch i386 "
 		case FB_CPUFAMILY_X86_64
 			ldcline += "-arch x86_64 "
-		case FB_CPUFAMILY_AARCH64
-			ldcline += "-arch arm64 "
 		case FB_CPUFAMILY_ARM
 			'' fixme: this is clearly too specific
 			ldcline += "-arch armv6 "
 		end select
-
-	'' Amiga-like targets: no special ld emulation flags needed
-	case FB_COMPTARGET_AMIGA, FB_COMPTARGET_AROS, _
-		FB_COMPTARGET_MORPHOS, FB_COMPTARGET_AMIGAOS4
-
 	end select
 
 	'' Set executable name
@@ -981,14 +945,7 @@ private function hLinkFiles( ) as integer
 
 		if( fbGetOption( FB_COMPOPT_OUTTYPE ) = FB_OUTTYPE_DYNAMICLIB ) then
 			dllname = hStripPath( hStripExt( fbc.outname ) )
-			if( fbGetOption( FB_COMPOPT_TARGET ) = FB_COMPTARGET_DARWIN ) then
-				'' Darwin has neither -shared nor -h: a shared library is built
-				'' with -dynamiclib, and the name recorded in it, the equivalent
-				'' of an ELF SONAME, comes from -install_name.
-				ldcline += " -dynamiclib -install_name " + QUOTE + hStripPath( fbc.outname ) + QUOTE
-			else
-				ldcline += " -shared -h" + hStripPath( fbc.outname )
-			end if
+			ldcline += " -shared -h" + hStripPath( fbc.outname )
 
 			'' Turn libfoo into foo, so it can be checked against -l foo below
 			if( left( dllname, 3 ) = "lib" ) then
@@ -1030,13 +987,7 @@ private function hLinkFiles( ) as integer
 		if( (fbGetOption( FB_COMPOPT_OUTTYPE ) = FB_OUTTYPE_DYNAMICLIB) or _
 			fbGetOption( FB_COMPOPT_EXPORT ) ) and _
 			(fbGetOption( FB_COMPOPT_TARGET ) <> FB_COMPTARGET_SOLARIS) then
-			if( fbGetOption( FB_COMPOPT_TARGET ) = FB_COMPTARGET_DARWIN ) then
-				'' ld64 spells it -export_dynamic and is reached through the
-				'' compiler driver, which does not know the option itself.
-				ldcline += " -Wl,-export_dynamic"
-			else
-				ldcline += " --export-dynamic"
-			end if
+			ldcline += " --export-dynamic"
 		end if
 
 	case FB_COMPTARGET_XBOX
@@ -1091,7 +1042,6 @@ private function hLinkFiles( ) as integer
 			(fbGetOption( FB_COMPOPT_TARGET ) <> FB_COMPTARGET_DARWIN) and _
 			(fbGetOption( FB_COMPOPT_TARGET ) <> FB_COMPTARGET_SOLARIS) and _
 			( fbGetOption( FB_COMPOPT_TARGET ) <> FB_COMPTARGET_JS ) and _
-			(not coff_linker) and _
 			(not fbcIsUsingGoldLinker( )) ) then
 			ldcline += " -T """ + fbc.libpath + (FB_HOST_PATHDIV + "fbextra.x""")
 		end if
@@ -1212,9 +1162,9 @@ private function hLinkFiles( ) as integer
 			ldcline += hFindLib( "crt0.o" )
 		end if
 
-	case FB_COMPTARGET_LINUX, _
-	     FB_COMPTARGET_FREEBSD, FB_COMPTARGET_OPENBSD, _
-	     FB_COMPTARGET_NETBSD, FB_COMPTARGET_DRAGONFLY, FB_COMPTARGET_SOLARIS
+	case FB_COMPTARGET_LINUX, FB_COMPTARGET_DARWIN, _
+		FB_COMPTARGET_FREEBSD, FB_COMPTARGET_OPENBSD, _
+		FB_COMPTARGET_NETBSD, FB_COMPTARGET_DRAGONFLY, FB_COMPTARGET_SOLARIS
 
 		if( fbGetOption( FB_COMPOPT_OUTTYPE ) = FB_OUTTYPE_EXECUTABLE) then
 			if( fbGetOption( FB_COMPOPT_PROFILE ) ) then
@@ -1246,10 +1196,6 @@ private function hLinkFiles( ) as integer
 				ldcline += hFindLib( "crtbegin.o" )
 			end if
 		end if
-
-	case FB_COMPTARGET_DARWIN
-		'' The compiler driver supplies macOS CRT objects and system libraries.
-		'' Passing historical crt1.o/ld-only flags directly breaks current Xcode.
 
 	case FB_COMPTARGET_ANDROID
 		if( fbGetOption( FB_COMPOPT_OUTTYPE ) = FB_OUTTYPE_EXECUTABLE) then
@@ -1310,8 +1256,7 @@ private function hLinkFiles( ) as integer
 	'' All libraries are passed inside -( -) so we don't need to worry as
 	'' much about their order and/or listing them repeatedly. (Not supported by Darwin ld)
 	if ( fbGetOption( FB_COMPOPT_TARGET ) <> FB_COMPTARGET_DARWIN ) then
-		if( (fbGetOption( FB_COMPOPT_TARGET ) <> FB_COMPTARGET_JS) and _
-			(not coff_linker) ) then
+		if( fbGetOption( FB_COMPOPT_TARGET ) <> FB_COMPTARGET_JS ) then
 			ldcline += " ""-("""
 		end if
 	end if
@@ -1335,34 +1280,27 @@ private function hLinkFiles( ) as integer
 			'' or .so's against themselves (ld will fail to read in
 			'' its output file...)
 			if ((checkdllname = FALSE) orelse (i->s <> dllname)) then
-				if( coff_linker and (i->s = "gcc") ) then
-					ldcline += " """ + coff_runtime + """"
-				else
-					ldcline += " -l" + i->s
+				'' Lib names ending in ".dll" (also given via -l on the
+				'' cmd line) can't be resolved by the linker ("-lfoo.dll"
+				'' searches for "libfoo.dll.a"/"foo.dll.dll" only), so
+				'' strip the extension and let it find the import
+				'' library "libfoo.a" or the DLL itself.
+				dim as string libname = i->s
+				if( len( libname ) > 4 ) then
+					if( lcase( right( libname, 4 ) ) = ".dll" ) then
+						libname = left( libname, len( libname ) - 4 )
+					end if
 				end if
+				ldcline += " -l" + libname
 			end if
 			i = listGetNext(i)
 		wend
 	end scope
 
-	'' Frameworks must follow static archives on Darwin. They are passed to
-	'' the Clang driver as -framework <name>, never through the -l loop above.
-	if( fbGetOption( FB_COMPOPT_TARGET ) = FB_COMPTARGET_DARWIN ) then
-		scope
-			dim as TSTRSETITEM ptr i = listGetHead(@fbc.darwinframeworks.list)
-			while( i )
-				ldcline += " -framework " + i->s
-				i = listGetNext(i)
-			wend
-		end scope
-	end if
-
 	if (fbGetOption( FB_COMPOPT_TARGET ) <> FB_COMPTARGET_DARWIN) then
 		if( fbGetOption( FB_COMPOPT_TARGET ) <> FB_COMPTARGET_JS ) then
-			if( not coff_linker ) then
-				'' End of lib group
-				ldcline += " ""-)"""
-			end if
+			'' End of lib group
+			ldcline += " ""-)"""
 		else
 			ldcline += " -lfb"
 		end if
@@ -1396,7 +1334,7 @@ private function hLinkFiles( ) as integer
 	end select
 
 	if( fbGetOption( FB_COMPOPT_TARGET ) = FB_COMPTARGET_DARWIN ) then
-		ldcline += " -mmacosx-version-min=" + FB_DARWIN_MIN_OS
+		ldcline += " -macosx_version_min 10.4"
 	end if
 
 	'' This is required for 64-bit modules on *nix-y platforms
@@ -1405,7 +1343,8 @@ private function hLinkFiles( ) as integer
 	select case as const fbGetOption( FB_COMPOPT_TARGET )
 	case FB_COMPTARGET_LINUX, FB_COMPTARGET_FREEBSD, _
 		FB_COMPTARGET_OPENBSD, FB_COMPTARGET_NETBSD, _
-	     FB_COMPTARGET_DRAGONFLY, FB_COMPTARGET_SOLARIS
+		FB_COMPTARGET_DRAGONFLY, FB_COMPTARGET_SOLARIS, _
+		FB_COMPTARGET_DARWIN
 		dim as long outtype = fbGetOption( FB_COMPOPT_OUTTYPE )
 		if outtype = FB_OUTTYPE_EXECUTABLE OrElse outtype = FB_OUTTYPE_DYNAMICLIB Then
 			dim as long cpufamily = fbGetCpuFamily( )
@@ -1476,14 +1415,10 @@ private function hLinkFiles( ) as integer
 		end if
 	#endif
 
-	'' macOS must link through the compiler driver so that it supplies the SDK,
-	'' CRT objects and current platform linker flags. Other targets keep the
-	'' historical direct-linker path.
+	'' invoke ld
 	var ld = FBCTOOL_LD
 	if( fbGetOption( FB_COMPOPT_TARGET ) = FB_COMPTARGET_JS ) then
 		ld = FBCTOOL_EMLD
-	elseif( fbGetOption( FB_COMPOPT_TARGET ) = FB_COMPTARGET_DARWIN ) then
-		ld = FBCTOOL_GCC
 	end if
 
 	if( fbcRunBin( "linking", ld, ldcline ) = FALSE ) then
@@ -1732,11 +1667,7 @@ dim shared as FBGNUOSINFO gnuosmap(0 to ...) => _
 	(@"solaris"    , FB_COMPTARGET_SOLARIS  ), _
 	(@"netbsd"     , FB_COMPTARGET_NETBSD   ), _
 	(@"openbsd"    , FB_COMPTARGET_OPENBSD  ), _
-	(@"xbox"       , FB_COMPTARGET_XBOX     ), _
-	(@"amigaos4"   , FB_COMPTARGET_AMIGAOS4 ), _
-	(@"amigaos"    , FB_COMPTARGET_AMIGA    ), _
-	(@"aros"       , FB_COMPTARGET_AROS     ), _
-	(@"morphos"    , FB_COMPTARGET_MORPHOS  )  _
+	(@"xbox"       , FB_COMPTARGET_XBOX     )  _
 }
 
 '' Architectures recognized when parsing GNU triplets (-target option)
@@ -1761,8 +1692,7 @@ dim shared as FBGNUARCHINFO gnuarchmap(0 to ...) => _
 	(@"ppc64  "    , FB_DEFAULT_CPUTYPE_PPC64  ), _
 	(@"powerpc64"  , FB_DEFAULT_CPUTYPE_PPC64  ),  _
 	(@"ppc64le  "  , FB_DEFAULT_CPUTYPE_PPC64LE), _
-	(@"powerpc64le", FB_DEFAULT_CPUTYPE_PPC64LE), _
-	(@"m68k"       , FB_DEFAULT_CPUTYPE_M68K   )  _
+	(@"powerpc64le", FB_DEFAULT_CPUTYPE_PPC64LE)  _
 }
 
 '' Identify OS (FB_COMPTARGET_*) and architecture (FB_CPUTYPE_*) in a GNU
@@ -1845,11 +1775,7 @@ dim shared as FBOSARCHINFO fbosarchmap(0 to ...) => _
 	(@"linux"  , FB_COMPTARGET_LINUX  , FB_DEFAULT_CPUTYPE       ), _
 	(@"android", FB_COMPTARGET_ANDROID, FB_CPUTYPE_ARMV7A        ), _
 	(@"netbsd" , FB_COMPTARGET_NETBSD , FB_DEFAULT_CPUTYPE       ), _
-	(@"openbsd", FB_COMPTARGET_OPENBSD, FB_DEFAULT_CPUTYPE       ), _
-	(@"amiga"   , FB_COMPTARGET_AMIGA   , FB_DEFAULT_CPUTYPE_M68K ), _
-	(@"aros"    , FB_COMPTARGET_AROS    , FB_DEFAULT_CPUTYPE      ), _
-	(@"morphos" , FB_COMPTARGET_MORPHOS , FB_DEFAULT_CPUTYPE_PPC  ), _
-	(@"amigaos4", FB_COMPTARGET_AMIGAOS4, FB_DEFAULT_CPUTYPE_PPC  )  _
+	(@"openbsd", FB_COMPTARGET_OPENBSD, FB_DEFAULT_CPUTYPE       )  _
 }
 
 ''
@@ -3737,37 +3663,16 @@ private function hCompileXpm( ) as integer
 	function = TRUE
 end function
 
-'' Clang's COFF AArch64 assembler cannot resolve a branch to a later local
-'' function label when it reads its own generated assembly back in.  Let the
-'' C compiler emit the object directly for this platform instead.  This keeps
-'' the C backend and its target ABI unchanged while avoiding that broken
-'' intermediate assembly round-trip.
-private function hUseDirectCObjectOutput( ) as integer
-	function = (fbGetOption( FB_COMPOPT_TARGET ) = FB_COMPTARGET_WIN32) andalso _
-		(fbGetCpuFamily( ) = FB_CPUFAMILY_AARCH64) andalso _
-		((fbGetOption( FB_COMPOPT_BACKEND ) = FB_BACKEND_GCC) or _
-		 (fbGetOption( FB_COMPOPT_BACKEND ) = FB_BACKEND_CLANG))
-end function
-
 private function hCompileStage2Module( byval module as FBCIOFILE ptr ) as integer
 	dim as string ln, asmfile
-	dim as integer direct_object
 
-	direct_object = hUseDirectCObjectOutput( )
-	if( direct_object ) then
-		asmfile = *module->objfile
-		if( fbc.keepobj = FALSE ) then
-			fbcAddTemp( asmfile )
-		end if
-	else
-		asmfile = hGetAsmName( module, 2 )
-		'' Clean up stage 2 output (the final .asm for -gen gcc/llvm) unless
-		'' -RR was given.
-		if( (not fbc.keepfinalasm) and _
-			((fbGetOption( FB_COMPOPT_TARGET ) <> FB_COMPTARGET_JS) or _
-			(not fbc.keepobj)) ) then
-			fbcAddTemp( asmfile )
-		end if
+	asmfile = hGetAsmName( module, 2 )
+	'' Clean up stage 2 output (the final .asm for -gen gcc/llvm) unless
+	'' -RR was given.
+	if( (not fbc.keepfinalasm) and _
+		((fbGetOption( FB_COMPOPT_TARGET ) <> FB_COMPTARGET_JS) or _
+		(not fbc.keepobj)) ) then
+		fbcAddTemp( asmfile )
 	end if
 
 	select case( fbGetOption( FB_COMPOPT_BACKEND ) )
@@ -3786,17 +3691,11 @@ private function hCompileStage2Module( byval module as FBCIOFILE ptr ) as intege
 			ism64Target = True
 		end select
 
-		if( fbGetOption( FB_COMPOPT_TARGET ) = FB_COMPTARGET_DARWIN ) then
-			'' Clang embeds the deployment target in its generated Mach-O assembly.
-			'' Set it here, not only in the final linker invocation.
-			ln += "-mmacosx-version-min=" + FB_DARWIN_MIN_OS + " "
-		end if
-
 		if( fbGetOption( FB_COMPOPT_TARGET ) <> FB_COMPTARGET_JS ) then
 			'' GCC doesn't recognize the -march option and PowerPC combination
 			'' and recommendeds the -mcpu option be used for PowerPC.
 			select case fbGetCpuFamily( )
-			case FB_CPUFAMILY_PPC, FB_CPUFAMILY_PPC64, FB_CPUFAMILY_PPC64LE, FB_CPUFAMILY_M68K
+			case FB_CPUFAMILY_PPC, FB_CPUFAMILY_PPC64, FB_CPUFAMILY_PPC64LE
 				if( fbc.cputype_is_native ) then
 					ln += "-mcpu=native "
 				else
@@ -3830,14 +3729,8 @@ private function hCompileStage2Module( byval module as FBCIOFILE ptr ) as intege
 				ln += "-fno-integrated-as "
 			end if
 
-			'' Clang on Windows AArch64 can produce a valid COFF object directly,
-			'' but fails when its emitted assembly is sent through an assembler
-			'' as a separate second step.
-			if( direct_object ) then
-				ln += "-c "
-			else
-				ln += "-S "
-			end if
+			'' generate assembly
+			ln += "-S "
 
 			'' don't use any standard libraries or includes
 			ln += "-nostdlib -nostdinc "
@@ -3920,6 +3813,8 @@ private function hCompileStage2Module( byval module as FBCIOFILE ptr ) as intege
 		'' See ir-hlc.bas:hEmitType()
 		ln += "-Wno-format "
 
+		'' GCC supports extended identifiers, allowing the use of UTF-8 identifiers in .c files
+		ln += "-fextended-identifiers "
 		if( fbGetOption( FB_COMPOPT_DEBUGINFO ) ) then
 			ln += "-g "
 		end if
@@ -4048,21 +3943,7 @@ end sub
 private function hAssembleModule( byval module as FBCIOFILE ptr ) as integer
 	dim as string ln
 
-	'' hCompileStage2Module() already produced the final object for this
-	'' platform; a second assembler pass would fail on Clang COFF AArch64.
-	if( hUseDirectCObjectOutput( ) ) then
-		function = TRUE
-		exit function
-	end if
-
 	dim as FBCTOOL assembler = FBCTOOL_NONE
-
-	'' The CLANGARM64 MSYS toolchain exposes as.exe as a Clang driver. It
-	'' needs -c, whereas a standalone GNU as does not accept that option.
-	if( (fbGetOption( FB_COMPOPT_TARGET ) = FB_COMPTARGET_WIN32) and _
-	    (fbGetCpuFamily( ) = FB_CPUFAMILY_AARCH64) ) then
-		assembler = FBCTOOL_GCC
-	end if
 
 #ifdef ENABLE_STANDALONE
 	if( assembler = FBCTOOL_NONE ) then
@@ -4092,7 +3973,7 @@ private function hAssembleModule( byval module as FBCIOFILE ptr ) as integer
 	end if
 
 	select case assembler
-	case FBCTOOL_CLANG, FBCTOOL_GCC
+	case FBCTOOL_CLANG
 		ln += "-c "
 	case else
 		select case( fbGetCpuFamily( ) )
@@ -4111,23 +3992,13 @@ private function hAssembleModule( byval module as FBCIOFILE ptr ) as integer
 		end select
 
 		if( fbGetOption( FB_COMPOPT_DEBUGINFO ) = FALSE ) then
-			'' This is a GNU x86 assembler option. The CLANGARM64 toolchain
-			'' provides LLVM's assembler, which rejects it for AArch64.
-			if( (fbGetCpuFamily( ) = FB_CPUFAMILY_X86) orelse _
-			    (fbGetCpuFamily( ) = FB_CPUFAMILY_X86_64) ) then
-				if (fbGetOption( FB_COMPOPT_TARGET ) <> FB_COMPTARGET_DARWIN) then
-					if( fbGetOption( FB_COMPOPT_TARGET ) <> FB_COMPTARGET_JS ) then
-						ln += "--strip-local-absolute "
-					end if
-				endif
-			end if
+			if (fbGetOption( FB_COMPOPT_TARGET ) <> FB_COMPTARGET_DARWIN) then
+				if( fbGetOption( FB_COMPOPT_TARGET ) <> FB_COMPTARGET_JS ) then
+					ln += "--strip-local-absolute "
+				end if
+			endif
 		end if
 	end select
-
-	if( fbGetOption( FB_COMPOPT_TARGET ) = FB_COMPTARGET_DARWIN ) then
-		'' Also cover assembly emitted directly by a non-C backend.
-		ln += "-mmacosx-version-min=" + FB_DARWIN_MIN_OS + " "
-	end if
 
 	ln += """" + hGetAsmName( module, 2 ) + """ "
 	ln += "-o """ + *module->objfile + """"
@@ -4378,10 +4249,6 @@ private sub fbcAddDefLib(byval libname as zstring ptr)
 	strsetAdd(@fbc.finallibs, *libname, TRUE)
 end sub
 
-private sub fbcAddDarwinFramework(byval framework as zstring ptr)
-	strsetAdd(@fbc.darwinframeworks, *framework, TRUE)
-end sub
-
 private function hGetFbLibNameSuffix( ) as string
 	dim s as string
 	if( fbGetOption( FB_COMPOPT_MULTITHREADED ) ) then
@@ -4410,24 +4277,9 @@ private sub hAddDefaultLibs( )
 			fbcAddDefLib( "gdi32" )
 			fbcAddDefLib( "winmm" )
 
-		case FB_COMPTARGET_DARWIN
-			fbcAddDarwinFramework( "Cocoa" )
-			fbcAddDarwinFramework( "CoreGraphics" )
-
-			'' Keep explicitly enabled historical XQuartz builds linkable while
-			'' the default Darwin path moves to native Cocoa.
-			#if defined(ENABLE_XQUARTZ)
-				fbcAddDefLibPath( "/opt/X11/lib" )
-				fbcAddDefLib( "X11" )
-				fbcAddDefLib( "Xext" )
-				fbcAddDefLib( "Xpm" )
-				fbcAddDefLib( "Xrandr" )
-				fbcAddDefLib( "Xrender" )
-			#endif
-
 		case FB_COMPTARGET_LINUX, FB_COMPTARGET_FREEBSD, _
 			FB_COMPTARGET_OPENBSD, FB_COMPTARGET_NETBSD, _
-			FB_COMPTARGET_DRAGONFLY, FB_COMPTARGET_SOLARIS
+			FB_COMPTARGET_DARWIN, FB_COMPTARGET_DRAGONFLY, FB_COMPTARGET_SOLARIS
 
 			#if defined(__FB_LINUX__) or _
 				defined(__FB_FREEBSD__) or _
@@ -4469,29 +4321,10 @@ private sub hAddDefaultLibs( )
 		end if
 
 	case FB_COMPTARGET_DARWIN
-		'' Modern macOS uses the compiler runtime selected by the Clang driver;
-		'' Apple no longer ships a linkable libgcc.
+		fbcAddDefLib( "gcc" )
 		fbcAddDefLib( "System" )
 		fbcAddDefLib( "pthread" )
 		fbcAddDefLib( "ncurses" )
-
-	case FB_COMPTARGET_AMIGA
-		fbcAddDefLib( "gcc" )
-		fbcAddDefLib( "c" )
-		fbcAddDefLib( "amiga" )
-		fbcAddDefLib( "m" )
-
-	case FB_COMPTARGET_AROS
-		fbcAddDefLib( "gcc" )
-		fbcAddDefLib( "arosc" )
-		fbcAddDefLib( "autoinit" )
-		fbcAddDefLib( "c" )
-		fbcAddDefLib( "m" )
-
-	case FB_COMPTARGET_MORPHOS, FB_COMPTARGET_AMIGAOS4
-		fbcAddDefLib( "gcc" )
-		fbcAddDefLib( "c" )
-		fbcAddDefLib( "m" )
 
 	case FB_COMPTARGET_DOS
 		fbcAddDefLib( "gcc" )
@@ -4782,7 +4615,7 @@ private sub hPrintVersion( byval verbose as integer )
 
 	print "FreeBASIC Compiler - Version " + FB_VERSION + _
 		" (" + FB_BUILD_DATE_ISO + "), built for " + fbGetHostId( ) + " (" & fbGetHostBits( ) & "bit)"
-	print "Copyright (C) 2004-2025 The FreeBASIC development team."
+	print "Copyright (C) 2004-2026 The FreeBASIC development team. Compiled by VisualFBEditor team. Includes GCC 16.1.0 and GDB 17.1."
 
 	#ifdef ENABLE_STANDALONE
 		hAppendConfigInfo( config, "standalone" )
@@ -4809,6 +4642,10 @@ end sub
 
 	fbcInit( )
 
+#ifdef __FB_WIN32__
+	declare function SetConsoleOutputCP lib "kernel32" alias "SetConsoleOutputCP" (byval wcodepage as ulong) as long
+	SetConsoleOutputCP( 65001 )
+#endif
 	if( __FB_ARGC__ = 1 ) then
 		hPrintOptions( FALSE )
 		fbcEnd( 1 )

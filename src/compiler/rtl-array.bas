@@ -446,6 +446,14 @@ function rtlArrayClear( byval arrayexpr as ASTNODE ptr ) as ASTNODE ptr
 			exit function
 		end if
 
+	elseif( dtype = FB_DATATYPE_WSTRING ) then
+		'' Native counted-WSTRING elements are descriptor owners. Reuse the
+		'' object-array walker with a CDECL descriptor destructor.
+		proc = astNewCALL( PROCLOOKUP( ARRAYCLEAROBJ ) )
+		if( astNewARG( proc, arrayexpr, dtype ) = NULL ) then exit function
+		if( astNewARG( proc, astNewCONSTi( 0 ) ) = NULL ) then exit function
+		if( astNewARG( proc, hBuildProcPtr( PROCLOOKUP( DWSTRARRAYDTOR ) ) ) = NULL ) then exit function
+
 	elseif( dtype = FB_DATATYPE_STRING ) then
 		'' fb_ArrayDestructStr() to clear the string array
 		'' - there is no fb_ArrayClearStr() in rtlib
@@ -549,6 +557,18 @@ function rtlArrayErase _
 		if( astNewARG( proc, hBuildProcPtr( dtor ) ) = NULL ) then
 			exit function
 		end if
+	elseif( dtype = FB_DATATYPE_WSTRING ) then
+		if( is_dynamic ) then
+			proc = astNewCALL( PROCLOOKUP( ARRAYERASEOBJ ) )
+			if( astNewARG( proc, arrayexpr, dtype ) = NULL ) then exit function
+			if( astNewARG( proc, astNewCONSTi( 0 ) ) = NULL ) then exit function
+			if( astNewARG( proc, hBuildProcPtr( PROCLOOKUP( DWSTRARRAYDTOR ) ) ) = NULL ) then exit function
+		else
+			proc = astNewCALL( PROCLOOKUP( ARRAYDESTRUCTOBJ ) )
+			if( astNewARG( proc, arrayexpr, dtype ) = NULL ) then exit function
+			if( astNewARG( proc, hBuildProcPtr( PROCLOOKUP( DWSTRARRAYDTOR ) ) ) = NULL ) then exit function
+		end if
+
 	elseif( dtype = FB_DATATYPE_STRING ) then
 		if( is_dynamic ) then
 			'' fb_ArrayStrErase()
@@ -626,8 +646,17 @@ function rtlArrayRedim _
 	elementlen = symbGetSizeOf( sym )
 
 	hGetCtorDtorForRedim( dtype, symbGetSubtype( sym ), ctor, dtor )
+	dim as integer is_dynwstring = (typeGetDtAndPtrOnly( dtype ) = FB_DATATYPE_WSTRING)
 
-	if( (ctor = NULL) and (dtor = NULL) ) then
+	if( is_dynwstring ) then
+		'' Preserve/shrink must destruct removed descriptor elements; plain REDIM
+		'' must destruct the whole old allocation before replacing it.
+		if( dopreserve = FALSE ) then
+			f = PROCLOOKUP( ARRAYREDIM_OBJ )
+		else
+			f = PROCLOOKUP( ARRAYREDIMPRESV_OBJ )
+		end if
+	elseif( (ctor = NULL) and (dtor = NULL) ) then
 		if( dopreserve = FALSE ) then
 			f = PROCLOOKUP( ARRAYREDIM )
 		else
@@ -653,7 +682,13 @@ function rtlArrayRedim _
 		exit function
 	end if
 
-	if( (ctor = NULL) and (dtor = NULL) ) then
+	if( is_dynwstring ) then
+		'' object-array ABI: no ctor is needed because allocation/reallocation
+		'' clears new descriptor slots; the CDECL dtor owns their buffers.
+		if( astNewARG( proc, astNewCONSTi( 0 ) ) = NULL ) then exit function
+		if( astNewARG( proc, hBuildProcPtr( PROCLOOKUP( DWSTRARRAYDTOR ) ) ) = NULL ) then exit function
+
+	elseif( (ctor = NULL) and (dtor = NULL) ) then
 		'' byval doclear as integer
 
 		if( doclear ) then
@@ -742,6 +777,7 @@ function rtlArrayRedimTo _
 
 	dim as ASTNODE ptr proc = any
 	dim as FBSYMBOL ptr ctor = any, dtor = any
+	dim as integer is_dynwstring = (typeGetDtAndPtrOnly( dtype ) = FB_DATATYPE_WSTRING)
 
 	hGetCtorDtorForRedim( dtype, subtype, ctor, dtor )
 
@@ -763,17 +799,24 @@ function rtlArrayRedimTo _
 		exit function
 	end if
 
-	hCheckDefCtor( ctor, FALSE, FALSE )
-	hCheckDtor( dtor, FALSE, FALSE )
+	if( is_dynwstring ) then
+		'' The generic REDIM-TO object path must destroy all old descriptor
+		'' elements before reallocating.  New slots are calloc()'d, so no ctor.
+		if( astNewARG( proc, astNewCONSTi( 0 ) ) = NULL ) then exit function
+		if( astNewARG( proc, hBuildProcPtr( PROCLOOKUP( DWSTRARRAYDTOR ) ) ) = NULL ) then exit function
+	else
+		hCheckDefCtor( ctor, FALSE, FALSE )
+		hCheckDtor( dtor, FALSE, FALSE )
 
-	'' byval ctor as sub cdecl( )
-	if( astNewARG( proc, hBuildProcPtr( ctor ) ) = NULL ) then
-		exit function
-	end if
+		'' byval ctor as sub cdecl( )
+		if( astNewARG( proc, hBuildProcPtr( ctor ) ) = NULL ) then
+			exit function
+		end if
 
-	'' byval dtor as sub cdecl( )
-	if( astNewARG( proc, hBuildProcPtr( dtor ) ) = NULL ) then
-		exit function
+		'' byval dtor as sub cdecl( )
+		if( astNewARG( proc, hBuildProcPtr( dtor ) ) = NULL ) then
+			exit function
+		end if
 	end if
 
 	function = rtlErrorCheck( proc )

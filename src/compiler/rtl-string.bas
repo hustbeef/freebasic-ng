@@ -69,6 +69,406 @@
 				( typeAddrOf( typeSetIsConst( FB_DATATYPE_WCHAR ) ), FB_PARAMMODE_BYVAL, FALSE ) _
 			} _
 		), _
+		/' sub fb_WstrDynDelete( byref dst as wstring ) '/ _
+		( _
+			@FB_RTL_DWSTRDELETE, NULL, _
+			FB_DATATYPE_VOID, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, _
+			1, _
+			{ _
+				( FB_DATATYPE_WSTRING, FB_PARAMMODE_BYREF, FALSE ) _
+			} _
+		), _
+		/' sub fb_WstrDynArrayDtor cdecl( byval this_ as any ptr ) '/ _
+		( _
+			@FB_RTL_DWSTRARRAYDTOR, NULL, _
+			FB_DATATYPE_VOID, FB_FUNCMODE_CDECL, _
+			NULL, FB_RTL_OPT_NONE, _
+			1, _
+			{ _
+				( typeAddrOf( FB_DATATYPE_VOID ), FB_PARAMMODE_BYVAL, FALSE ) _
+			} _
+		), _
+		/' sub fb_WstrDynAssign( byref dst as wstring, byref src as const wstring ) '/ _
+		( _
+			@FB_RTL_DWSTRASSIGN, NULL, _
+			FB_DATATYPE_VOID, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, _
+			2, _
+			{ _
+				( FB_DATATYPE_WSTRING, FB_PARAMMODE_BYREF, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ) _
+			} _
+		), _
+		/' sub fb_WstrDynInit( byref dst as wstring, byref src as const wstring ) '/ _
+		( _
+			@FB_RTL_DWSTRINIT, NULL, _
+			FB_DATATYPE_VOID, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, _
+			2, _
+			{ _
+				( FB_DATATYPE_WSTRING, FB_PARAMMODE_BYREF, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ) _
+			} _
+		), _
+		/' sub fb_WstrDynInitW( byref dst as wstring, byval src as const wchar ptr ) '/ _
+		( _
+			@FB_RTL_DWSTRINITW, NULL, _
+			FB_DATATYPE_VOID, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, _
+			2, _
+			{ _
+				( FB_DATATYPE_WSTRING, FB_PARAMMODE_BYREF, FALSE ), _
+				( typeAddrOf( typeSetIsConst( FB_DATATYPE_WCHAR ) ), FB_PARAMMODE_BYVAL, FALSE ) _
+			} _
+		), _
+		/' sub fb_WstrDynInitWN( byref dst as wstring, byval src as const wchar ptr, byval n as integer ) '/ _
+		( _
+			@FB_RTL_DWSTRINITWN, NULL, FB_DATATYPE_VOID, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, 3, _
+			{ _
+				( FB_DATATYPE_WSTRING, FB_PARAMMODE_BYREF, FALSE ), _
+				( typeAddrOf( typeSetIsConst( FB_DATATYPE_WCHAR ) ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_INTEGER ), FB_PARAMMODE_BYVAL, FALSE ) _
+			} _
+		), _
+		/' sub fb_WstrDynInitA( byref dst as wstring, byref src as const any, byval src_size as integer ) '/ _
+		( _
+			@FB_RTL_DWSTRINITA, NULL, _
+			FB_DATATYPE_VOID, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, _
+			3, _
+			{ _
+				( FB_DATATYPE_WSTRING, FB_PARAMMODE_BYREF, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_VOID ), FB_PARAMMODE_BYREF, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_INTEGER ), FB_PARAMMODE_BYVAL, FALSE ) _
+			} _
+		), _
+		/' sub fb_WstrDynMoveInit( byref dst as wstring, byref src as wstring ) '/ _
+		( _
+			@FB_RTL_DWSTRMOVEINIT, NULL, _
+			FB_DATATYPE_VOID, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, _
+			2, _
+			{ _
+				( FB_DATATYPE_WSTRING, FB_PARAMMODE_BYREF, FALSE ), _
+				( FB_DATATYPE_WSTRING, FB_PARAMMODE_BYREF, FALSE ) _
+			} _
+		), _
+		/' sub fb_WstrDynMoveAssign( byref dst as wstring, byref src as wstring ) '/ _
+		( _
+			@FB_RTL_DWSTRMOVEASSIGN, NULL, _
+			FB_DATATYPE_VOID, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, _
+			2, _
+			{ _
+				( FB_DATATYPE_WSTRING, FB_PARAMMODE_BYREF, FALSE ), _
+				( FB_DATATYPE_WSTRING, FB_PARAMMODE_BYREF, FALSE ) _
+			} _
+		), _
+		/' sub fb_WstrDynConcatAssignPair( byref dst as wstring, byref lhs as const wstring, byref rhs as const wstring ) '/ _
+		( _
+			@FB_RTL_DWSTRCATPAIR, NULL, _
+			FB_DATATYPE_VOID, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, _
+			3, _
+			{ _
+				( FB_DATATYPE_WSTRING, FB_PARAMMODE_BYREF, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ) _
+			} _
+		), _
+		/' sub fb_WstrDynConcatInitPair( byref dst as wstring, byref lhs as const wstring, byref rhs as const wstring ) '/ _
+		( _
+			@FB_RTL_DWSTRCATINITPAIR, NULL, _
+			FB_DATATYPE_VOID, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, _
+			3, _
+			{ _
+				( FB_DATATYPE_WSTRING, FB_PARAMMODE_BYREF, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ) _
+			} _
+		), _
+		/' sub fb_WstrDynCopyToW( byval dst as wchar ptr, byval dst_chars as integer, byref src as const wstring ) '/ _
+		( _
+			@FB_RTL_DWSTRCOPYTOW, NULL, _
+			FB_DATATYPE_VOID, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, _
+			3, _
+			{ _
+				( typeAddrOf( FB_DATATYPE_WCHAR ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( FB_DATATYPE_INTEGER, FB_PARAMMODE_BYVAL, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ) _
+			} _
+		), _
+		/' sub fb_WstrDynCopyToA( byref dst as any, byval dst_size as integer, byref src as const wstring ) '/ _
+		( _
+			@FB_RTL_DWSTRCOPYTOA, NULL, _
+			FB_DATATYPE_VOID, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, _
+			3, _
+			{ _
+				( FB_DATATYPE_VOID, FB_PARAMMODE_BYREF, FALSE ), _
+				( FB_DATATYPE_INTEGER, FB_PARAMMODE_BYVAL, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ) _
+			} _
+		), _
+		/' sub fb_WstrDynAssignW( byref dst as wstring, byval src as const wchar ptr ) '/ _
+		( _
+			@FB_RTL_DWSTRASSIGNW, NULL, _
+			FB_DATATYPE_VOID, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, _
+			2, _
+			{ _
+				( FB_DATATYPE_WSTRING, FB_PARAMMODE_BYREF, FALSE ), _
+				( typeAddrOf( typeSetIsConst( FB_DATATYPE_WCHAR ) ), FB_PARAMMODE_BYVAL, FALSE ) _
+			} _
+		), _
+		/' sub fb_WstrDynAssignWN( byref dst as wstring, byval src as const wchar ptr, byval n as integer ) '/ _
+		( _
+			@FB_RTL_DWSTRASSIGNWN, NULL, FB_DATATYPE_VOID, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, 3, _
+			{ _
+				( FB_DATATYPE_WSTRING, FB_PARAMMODE_BYREF, FALSE ), _
+				( typeAddrOf( typeSetIsConst( FB_DATATYPE_WCHAR ) ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_INTEGER ), FB_PARAMMODE_BYVAL, FALSE ) _
+			} _
+		), _
+		/' sub fb_WstrDynAssignA( byref dst as wstring, byref src as const any, byval src_size as integer ) '/ _
+		( _
+			@FB_RTL_DWSTRASSIGNA, NULL, _
+			FB_DATATYPE_VOID, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, _
+			3, _
+			{ _
+				( FB_DATATYPE_WSTRING, FB_PARAMMODE_BYREF, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_VOID ), FB_PARAMMODE_BYREF, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_INTEGER ), FB_PARAMMODE_BYVAL, FALSE ) _
+			} _
+		), _
+		/' function fb_WstrDynLen( byref src as const wstring ) as integer '/ _
+		( _
+			@FB_RTL_DWSTRLEN, NULL, _
+			FB_DATATYPE_INTEGER, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, _
+			1, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ) _
+			} _
+		), _
+		/' function fb_WstrDynToWstr( byref src as const wstring ) as wstring '/ _
+		( _
+			@FB_RTL_DWSTRTOWSTR, NULL, _
+			FB_DATATYPE_WCHAR, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, _
+			1, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ) _
+			} _
+		), _
+		/' function fb_WstrDynToStr( byref src as const wstring ) as string '/ _
+		( _
+			@FB_RTL_DWSTRTOSTR, NULL, _
+			FB_DATATYPE_STRING, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, _
+			1, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ) _
+			} _
+		), _
+		/' sub fb_WstrDynConcatAssign( byref dst as wstring, byref src as const wstring ) '/ _
+		( _
+			@FB_RTL_DWSTRCAT, NULL, FB_DATATYPE_VOID, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, 2, _
+			{ _
+				( FB_DATATYPE_WSTRING, FB_PARAMMODE_BYREF, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ) _
+			} _
+		), _
+		/' sub fb_WstrDynConcatAssignW( byref dst as wstring, byval src as const wchar ptr ) '/ _
+		( _
+			@FB_RTL_DWSTRCATW, NULL, FB_DATATYPE_VOID, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, 2, _
+			{ _
+				( FB_DATATYPE_WSTRING, FB_PARAMMODE_BYREF, FALSE ), _
+				( typeAddrOf( typeSetIsConst( FB_DATATYPE_WCHAR ) ), FB_PARAMMODE_BYVAL, FALSE ) _
+			} _
+		), _
+		/' sub fb_WstrDynConcatAssignWN( byref dst as wstring, byval src as const wchar ptr, byval n as integer ) '/ _
+		( _
+			@FB_RTL_DWSTRCATWN, NULL, FB_DATATYPE_VOID, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, 3, _
+			{ _
+				( FB_DATATYPE_WSTRING, FB_PARAMMODE_BYREF, FALSE ), _
+				( typeAddrOf( typeSetIsConst( FB_DATATYPE_WCHAR ) ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_INTEGER ), FB_PARAMMODE_BYVAL, FALSE ) _
+			} _
+		), _
+		/' sub fb_WstrDynConcatAssignA( byref dst as wstring, byref src as const any, byval src_size as integer ) '/ _
+		( _
+			@FB_RTL_DWSTRCATA, NULL, FB_DATATYPE_VOID, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, 3, _
+			{ _
+				( FB_DATATYPE_WSTRING, FB_PARAMMODE_BYREF, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_VOID ), FB_PARAMMODE_BYREF, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_INTEGER ), FB_PARAMMODE_BYVAL, FALSE ) _
+			} _
+		), _
+		/' function fb_WstrDynAsc( byref src as const wstring, byval pos as integer ) as ulong '/ _
+		( _
+			@FB_RTL_DWSTRASC, NULL, FB_DATATYPE_ULONG, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, 2, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_INTEGER ), FB_PARAMMODE_BYVAL, TRUE, 1 ) _
+			} _
+		), _
+		/' function fb_WstrDynCompare( byref lhs as const wstring, byref rhs as const wstring ) as integer '/ _
+		( _
+			@FB_RTL_DWSTRCOMPARE, NULL, FB_DATATYPE_LONG, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, 2, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ) _
+			} _
+		), _
+		/' function fb_WstrDynInstr( byval start as integer, byref src as const wstring, byref patt as const wstring ) as integer '/ _
+		( _
+			@FB_RTL_DWSTRINSTR, NULL, FB_DATATYPE_INTEGER, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, 3, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_INTEGER ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ) _
+			} _
+		), _
+		/' function fb_WstrDynInstrAny( byval start as integer, byref src as const wstring, byref patt as const wstring ) as integer '/ _
+		( _
+			@FB_RTL_DWSTRINSTRANY, NULL, FB_DATATYPE_INTEGER, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, 3, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_INTEGER ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ) _
+			} _
+		), _
+		/' function fb_WstrDynInstrRev( byref src as const wstring, byref patt as const wstring, byval start as integer ) as integer '/ _
+		( _
+			@FB_RTL_DWSTRINSTRREV, NULL, FB_DATATYPE_INTEGER, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, 3, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_INTEGER ), FB_PARAMMODE_BYVAL, FALSE ) _
+			} _
+		), _
+		/' function fb_WstrDynInstrRevAny( byref src as const wstring, byref patt as const wstring, byval start as integer ) as integer '/ _
+		( _
+			@FB_RTL_DWSTRINSTRREVANY, NULL, FB_DATATYPE_INTEGER, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, 3, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_INTEGER ), FB_PARAMMODE_BYVAL, FALSE ) _
+			} _
+		), _
+		/' sub fb_WstrDynAssignMid( byref dst as wstring, byval start as integer, byval chars as integer, byref src as const wstring ) '/ _
+		( _
+			@FB_RTL_DWSTRMIDASSIGN, NULL, FB_DATATYPE_VOID, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, 4, _
+			{ _
+				( FB_DATATYPE_WSTRING, FB_PARAMMODE_BYREF, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_INTEGER ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_INTEGER ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ) _
+			} _
+		), _
+		/' function fb_WstrDynMidResult( byref src as const wstring, byval start as integer, byval chars as integer ) as wstring '/ _
+		( _
+			@FB_RTL_DWSTRMID, NULL, FB_DATATYPE_WSTRING, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, 3, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_INTEGER ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_INTEGER ), FB_PARAMMODE_BYVAL, FALSE ) _
+			} _
+		), _
+		/' function fb_WstrDynCaseResult( byref src as const wstring, byval mode as long, byval to_lower as long ) as wstring '/ _
+		( _
+			@FB_RTL_DWSTRCASE, NULL, FB_DATATYPE_WSTRING, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, 3, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ) _
+			} _
+		), _
+		/' function fb_WstrDynTrimSimpleResult( byref src as const wstring, byval side as long ) as wstring '/ _
+		( _
+			@FB_RTL_DWSTRTRIMSIMPLE, NULL, FB_DATATYPE_WSTRING, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, 2, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ) _
+			} _
+		), _
+		/' function fb_WstrDynTrimPatternResult( byref src as const wstring, byref patt as const wstring, byval side as long, byval is_any as long ) as wstring '/ _
+		( _
+			@FB_RTL_DWSTRTRIMPATTERN, NULL, FB_DATATYPE_WSTRING, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, 4, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ) _
+			} _
+		), _
+		/' sub fb_WstrDynLRSet( byref dst as wstring, byref src as const wstring, byval is_rset as long ) '/ _
+		( _
+			@"fb_WstrDynLRSet", NULL, FB_DATATYPE_VOID, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, 3, _
+			{ _
+				( FB_DATATYPE_WSTRING, FB_PARAMMODE_BYREF, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ) _
+			} _
+		), _
+		/' function fb_WstrDynFillResult( byval chars as integer, byval c as ulong ) as wstring '/ _
+		( _
+			@FB_RTL_DWSTRFILL, NULL, FB_DATATYPE_WSTRING, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, 2, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_INTEGER ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_ULONG ), FB_PARAMMODE_BYVAL, FALSE ) _
+			} _
+		), _
+		/' function fb_WstrDynFillWstrResult( byval chars as integer, byref src as const wstring ) as wstring '/ _
+		( _
+			@FB_RTL_DWSTRFILLWSTR, NULL, FB_DATATYPE_WSTRING, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, 2, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_INTEGER ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ) _
+			} _
+		), _
+		/' function fb_WstrDynChrResult cdecl( byval args as long, ... ) as wstring '/ _
+		( _
+			@FB_RTL_DWSTRCHR, NULL, FB_DATATYPE_WSTRING, FB_FUNCMODE_CDECL, _
+			NULL, FB_RTL_OPT_NONE, 2, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( FB_DATATYPE_INVALID, FB_PARAMMODE_VARARG, FALSE ) _
+			} _
+		), _
+		/' function fb_WstrDynAllocTempResult( byref src as wstring ) as wstring '/ _
+		( _
+			@FB_RTL_DWSTRTEMPRESULT, NULL, FB_DATATYPE_WSTRING, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, 1, _
+			{ _
+				( FB_DATATYPE_WSTRING, FB_PARAMMODE_BYREF, FALSE ) _
+			} _
+		), _
 		/' function fb_WstrAssignFromA( byval dst as wstring ptr, byval dst_len as const integer, _
 				byref src as const any, byval src_len as const integer ) as wstring ptr '/ _
 		( _
@@ -1104,6 +1504,16 @@
 				( typeSetIsConst( FB_DATATYPE_WCHAR ), FB_PARAMMODE_BYREF, FALSE ) _
 			} _
 		), _
+		/' function val overload( byref str as const native wstring ) as double '/ _
+		( _
+			@FB_RTL_STR2DBL, @"fb_WstrDynVal", _
+			FB_DATATYPE_DOUBLE, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_OVER or FB_RTL_OPT_NOQB, _
+			1, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ) _
+			} _
+		), _
 		/' function valbool overload( byref str as const string ) as boolean '/ _
 		( _
 			@FB_RTL_STR2BOOL, NULL, _
@@ -1122,6 +1532,16 @@
 			1, _
 			{ _
 				( typeSetIsConst( FB_DATATYPE_WCHAR ), FB_PARAMMODE_BYREF, FALSE ) _
+			} _
+		), _
+		/' function valbool overload( byref str as const native wstring ) as boolean '/ _
+		( _
+			@FB_RTL_STR2BOOL, @"fb_WstrDynValBool", _
+			FB_DATATYPE_BOOLEAN, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_OVER or FB_RTL_OPT_NOQB, _
+			1, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ) _
 			} _
 		), _
 		/' function valint overload( byref str as const string ) as long '/ _
@@ -1144,6 +1564,16 @@
 				( typeSetIsConst( FB_DATATYPE_WCHAR ), FB_PARAMMODE_BYREF, FALSE ) _
 			} _
 		), _
+		/' function valint overload( byref str as const native wstring ) as long '/ _
+		( _
+			@FB_RTL_STR2INT, @"fb_WstrDynValInt", _
+			FB_DATATYPE_LONG, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_OVER or FB_RTL_OPT_NOQB, _
+			1, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ) _
+			} _
+		), _
 		/' function valuint overload( byref str as const string ) as ulong '/ _
 		( _
 			@FB_RTL_STR2UINT, @"fb_VALUINT", _
@@ -1162,6 +1592,16 @@
 			1, _
 			{ _
 				( typeSetIsConst( FB_DATATYPE_WCHAR ), FB_PARAMMODE_BYREF, FALSE ) _
+			} _
+		), _
+		/' function valuint overload( byref str as const native wstring ) as ulong '/ _
+		( _
+			@FB_RTL_STR2UINT, @"fb_WstrDynValUInt", _
+			FB_DATATYPE_ULONG, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_OVER or FB_RTL_OPT_NOQB, _
+			1, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ) _
 			} _
 		), _
 		/' function vallng overload( byref str as const string ) as longint '/ _
@@ -1184,6 +1624,16 @@
 				( typeSetIsConst( FB_DATATYPE_WCHAR ), FB_PARAMMODE_BYREF, FALSE ) _
 			} _
 		), _
+		/' function vallng overload( byref str as const native wstring ) as longint '/ _
+		( _
+			@FB_RTL_STR2LNG, @"fb_WstrDynValLng", _
+			FB_DATATYPE_LONGINT, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_OVER or FB_RTL_OPT_NOQB, _
+			1, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ) _
+			} _
+		), _
 		/' function valulng overload( byref str as const string ) as ulongint '/ _
 		( _
 			@FB_RTL_STR2ULNG, @"fb_VALULNG", _
@@ -1202,6 +1652,16 @@
 			1, _
 			{ _
 				( typeSetIsConst( FB_DATATYPE_WCHAR ), FB_PARAMMODE_BYREF, FALSE ) _
+			} _
+		), _
+		/' function valulng overload( byref str as const native wstring ) as ulongint '/ _
+		( _
+			@FB_RTL_STR2ULNG, @"fb_WstrDynValULng", _
+			FB_DATATYPE_ULONGINT, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_OVER or FB_RTL_OPT_NOQB, _
+			1, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ) _
 			} _
 		), _
 		/' function hex overload( byval number as const ubyte ) as string '/ _
@@ -1916,6 +2376,17 @@
 				( typeSetIsConst( FB_DATATYPE_INTEGER ), FB_PARAMMODE_BYVAL, FALSE ) _
 			} _
 		), _
+		/' function left overload( byref str as const native wstring, byval chars as const integer ) as native wstring '/ _
+		( _
+			@"left", @"fb_WstrDynLeftResult", _
+			FB_DATATYPE_WSTRING, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_OVER or FB_RTL_OPT_NOQB, _
+			2, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_INTEGER ), FB_PARAMMODE_BYVAL, FALSE ) _
+			} _
+		), _
 		/' sub fb_leftself overload( byref str as string, byval chars as const integer )'/ _
 		( _
 			@"fb_LeftSelf", @"fb_LEFTSELF", _
@@ -1946,6 +2417,17 @@
 			2, _
 			{ _
 				( typeSetIsConst( FB_DATATYPE_WCHAR ), FB_PARAMMODE_BYREF, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_INTEGER ), FB_PARAMMODE_BYVAL, FALSE ) _
+			} _
+		), _
+		/' function right overload( byref str as const native wstring, byval chars as const integer ) as native wstring '/ _
+		( _
+			@"right", @"fb_WstrDynRightResult", _
+			FB_DATATYPE_WSTRING, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_OVER or FB_RTL_OPT_NOQB, _
+			2, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ), _
 				( typeSetIsConst( FB_DATATYPE_INTEGER ), FB_PARAMMODE_BYVAL, FALSE ) _
 			} _
 		), _
@@ -2161,6 +2643,33 @@ function rtlStrCompare _
 
 	'' byval str2_len as integer
 	if( astNewARG( proc, astNewCONSTi( str2len ) ) = NULL ) then
+		exit function
+	end if
+
+	function = proc
+
+end function
+
+'':::::
+function rtlDynWstrCompare _
+	( _
+		byval str1 as ASTNODE ptr, _
+		byval str2 as ASTNODE ptr _
+	) as ASTNODE ptr
+
+	dim as ASTNODE ptr proc = any
+
+	function = NULL
+
+	proc = astNewCALL( PROCLOOKUP( DWSTRCOMPARE ) )
+
+	'' byref lhs as const managed wstring
+	if( astNewARG( proc, str1, FB_DATATYPE_WSTRING ) = NULL ) then
+		exit function
+	end if
+
+	'' byref rhs as const managed wstring
+	if( astNewARG( proc, str2, FB_DATATYPE_WSTRING ) = NULL ) then
 		exit function
 	end if
 
@@ -2622,6 +3131,322 @@ function rtlStrAssign _
 end function
 
 '':::::
+private function hNativeWstrKnownSpanLen( byval src as ASTNODE ptr ) as longint
+	dim as FBSYMBOL ptr lit = astGetStrLitSymbol( src )
+	if( lit <> NULL ) then
+		'' symbGetWStrLength() measures the compiler's *escaped* literal storage.
+		'' That is not the logical WCHAR count (\uXXXX expands, and embedded NUL
+		'' is legal for native counted WSTRING).  hUnescapeW() already exposes the
+		'' exact unescaped code-unit count explicitly -- use it instead of strlen.
+		dim as integer textlen
+		hUnescapeW( symbGetVarLitTextW( lit ), textlen )
+		return textlen
+	end if
+	if( astIsCALL( src ) ) then
+		if( src->sym = PROCLOOKUP( WSTRCHR ) ) then
+			return src->call.args - 1
+		end if
+	end if
+	return -1
+end function
+
+function rtlDynWstrAssign _
+	( _
+		byval dst as ASTNODE ptr, _
+		byval src as ASTNODE ptr, _
+		byval src_len_override as longint = -2, _
+		byval is_ini as integer = FALSE _
+	) as ASTNODE ptr
+
+	dim as ASTNODE ptr proc = NULL
+	dim as integer sdtype = astGetDataType( src )
+	dim as longint lgt = any
+
+	function = NULL
+	assert( astGetDataType( dst ) = FB_DATATYPE_WSTRING )
+
+	select case sdtype
+	case FB_DATATYPE_WSTRING
+		proc = astNewCALL( iif( is_ini, PROCLOOKUP( DWSTRINIT ), PROCLOOKUP( DWSTRASSIGN ) ) )
+		if( astNewARG( proc, dst, FB_DATATYPE_WSTRING ) = NULL ) then exit function
+		if( astNewARG( proc, src, FB_DATATYPE_WSTRING ) = NULL ) then exit function
+
+	case FB_DATATYPE_WCHAR
+		lgt = hNativeWstrKnownSpanLen( src )
+		if( lgt >= 0 ) then
+			proc = astNewCALL( iif( is_ini, PROCLOOKUP( DWSTRINITWN ), PROCLOOKUP( DWSTRASSIGNWN ) ) )
+		else
+			proc = astNewCALL( iif( is_ini, PROCLOOKUP( DWSTRINITW ), PROCLOOKUP( DWSTRASSIGNW ) ) )
+		end if
+		if( astNewARG( proc, dst, FB_DATATYPE_WSTRING ) = NULL ) then exit function
+		if( astNewARG( proc, src ) = NULL ) then exit function
+		if( lgt >= 0 ) then
+			if( astNewARG( proc, astNewCONSTi( lgt ) ) = NULL ) then exit function
+		end if
+
+	case FB_DATATYPE_STRING, FB_DATATYPE_FIXSTR, FB_DATATYPE_CHAR
+		proc = astNewCALL( iif( is_ini, PROCLOOKUP( DWSTRINITA ), PROCLOOKUP( DWSTRASSIGNA ) ) )
+		if( astNewARG( proc, dst, FB_DATATYPE_WSTRING ) = NULL ) then exit function
+		if( src_len_override <> -2 ) then
+			lgt = src_len_override
+		else
+			lgt = rtlCalcStrLen( src, sdtype )
+		end if
+		if( astNewARG( proc, src ) = NULL ) then exit function
+		if( astNewARG( proc, astNewCONSTi( lgt ) ) = NULL ) then exit function
+
+	case else
+		'' No generic scalar-to-managed-WSTRING escape hatch.  Keep assignment
+		'' legality aligned with STRING; explicit conversion producers must have
+		'' produced a supported string-family AST before reaching this helper.
+		exit function
+	end select
+
+	function = proc
+end function
+
+function rtlDynWstrInit( byval dst as ASTNODE ptr, byval src as ASTNODE ptr ) as ASTNODE ptr
+	dim as ASTNODE ptr proc = astNewCALL( PROCLOOKUP( DWSTRINIT ) )
+	function = NULL
+	assert( astGetDataType( dst ) = FB_DATATYPE_WSTRING )
+	assert( astGetDataType( src ) = FB_DATATYPE_WSTRING )
+	if( astNewARG( proc, dst, FB_DATATYPE_WSTRING ) = NULL ) then exit function
+	if( astNewARG( proc, src, FB_DATATYPE_WSTRING ) = NULL ) then exit function
+	function = proc
+end function
+
+function rtlDynWstrMoveInit( byval dst as ASTNODE ptr, byval src as ASTNODE ptr ) as ASTNODE ptr
+	dim as ASTNODE ptr proc = astNewCALL( PROCLOOKUP( DWSTRMOVEINIT ) )
+	function = NULL
+	assert( astGetDataType( dst ) = FB_DATATYPE_WSTRING )
+	assert( astGetDataType( src ) = FB_DATATYPE_WSTRING )
+	if( astNewARG( proc, dst, FB_DATATYPE_WSTRING ) = NULL ) then exit function
+	if( astNewARG( proc, src, FB_DATATYPE_WSTRING ) = NULL ) then exit function
+	function = proc
+end function
+
+function rtlDynWstrMoveAssign( byval dst as ASTNODE ptr, byval src as ASTNODE ptr ) as ASTNODE ptr
+	dim as ASTNODE ptr proc = astNewCALL( PROCLOOKUP( DWSTRMOVEASSIGN ) )
+	function = NULL
+	assert( astGetDataType( dst ) = FB_DATATYPE_WSTRING )
+	assert( astGetDataType( src ) = FB_DATATYPE_WSTRING )
+	if( astNewARG( proc, dst, FB_DATATYPE_WSTRING ) = NULL ) then exit function
+	if( astNewARG( proc, src, FB_DATATYPE_WSTRING ) = NULL ) then exit function
+	function = proc
+end function
+
+function rtlDynWstrConcatAssignPair( byval dst as ASTNODE ptr, byval lhs as ASTNODE ptr, byval rhs as ASTNODE ptr ) as ASTNODE ptr
+	dim as ASTNODE ptr proc = astNewCALL( PROCLOOKUP( DWSTRCATPAIR ) )
+	function = NULL
+	assert( astGetDataType( dst ) = FB_DATATYPE_WSTRING )
+	assert( astGetDataType( lhs ) = FB_DATATYPE_WSTRING )
+	assert( astGetDataType( rhs ) = FB_DATATYPE_WSTRING )
+	if( astNewARG( proc, dst, FB_DATATYPE_WSTRING ) = NULL ) then exit function
+	if( astNewARG( proc, lhs, FB_DATATYPE_WSTRING ) = NULL ) then exit function
+	if( astNewARG( proc, rhs, FB_DATATYPE_WSTRING ) = NULL ) then exit function
+	function = proc
+end function
+
+function rtlDynWstrConcatInitPair( byval dst as ASTNODE ptr, byval lhs as ASTNODE ptr, byval rhs as ASTNODE ptr ) as ASTNODE ptr
+	dim as ASTNODE ptr proc = astNewCALL( PROCLOOKUP( DWSTRCATINITPAIR ) )
+	function = NULL
+	assert( astGetDataType( dst ) = FB_DATATYPE_WSTRING )
+	assert( astGetDataType( lhs ) = FB_DATATYPE_WSTRING )
+	assert( astGetDataType( rhs ) = FB_DATATYPE_WSTRING )
+	if( astNewARG( proc, dst, FB_DATATYPE_WSTRING ) = NULL ) then exit function
+	if( astNewARG( proc, lhs, FB_DATATYPE_WSTRING ) = NULL ) then exit function
+	if( astNewARG( proc, rhs, FB_DATATYPE_WSTRING ) = NULL ) then exit function
+	function = proc
+end function
+
+function rtlDynWstrDelete( byval expr as ASTNODE ptr ) as ASTNODE ptr
+	dim as ASTNODE ptr proc = astNewCALL( PROCLOOKUP( DWSTRDELETE ) )
+	function = NULL
+	assert( astGetDataType( expr ) = FB_DATATYPE_WSTRING )
+	if( astNewARG( proc, expr, FB_DATATYPE_WSTRING ) = NULL ) then exit function
+	function = proc
+end function
+
+function rtlDynWstrLen( byval expr as ASTNODE ptr ) as ASTNODE ptr
+	dim as ASTNODE ptr proc = astNewCALL( PROCLOOKUP( DWSTRLEN ) )
+	function = NULL
+	assert( astGetDataType( expr ) = FB_DATATYPE_WSTRING )
+	if( astNewARG( proc, expr, FB_DATATYPE_WSTRING ) = NULL ) then exit function
+	function = proc
+end function
+
+function rtlDynWstrConcatAssign( byval dst as ASTNODE ptr, byval src as ASTNODE ptr ) as ASTNODE ptr
+	dim as ASTNODE ptr proc = NULL
+	dim as integer sdtype = astGetDataType( src )
+	dim as longint lgt = any
+	function = NULL
+	assert( astGetDataType( dst ) = FB_DATATYPE_WSTRING )
+	select case sdtype
+	case FB_DATATYPE_WSTRING
+		proc = astNewCALL( PROCLOOKUP( DWSTRCAT ) )
+		if( astNewARG( proc, dst, FB_DATATYPE_WSTRING ) = NULL ) then exit function
+		if( astNewARG( proc, src, FB_DATATYPE_WSTRING ) = NULL ) then exit function
+	case FB_DATATYPE_WCHAR
+		lgt = hNativeWstrKnownSpanLen( src )
+		if( lgt >= 0 ) then
+			proc = astNewCALL( PROCLOOKUP( DWSTRCATWN ) )
+		else
+			proc = astNewCALL( PROCLOOKUP( DWSTRCATW ) )
+		end if
+		if( astNewARG( proc, dst, FB_DATATYPE_WSTRING ) = NULL ) then exit function
+		if( astNewARG( proc, src ) = NULL ) then exit function
+		if( lgt >= 0 ) then
+			if( astNewARG( proc, astNewCONSTi( lgt ) ) = NULL ) then exit function
+		end if
+	case FB_DATATYPE_STRING, FB_DATATYPE_FIXSTR, FB_DATATYPE_CHAR
+		proc = astNewCALL( PROCLOOKUP( DWSTRCATA ) )
+		if( astNewARG( proc, dst, FB_DATATYPE_WSTRING ) = NULL ) then exit function
+		lgt = rtlCalcStrLen( src, sdtype )
+		if( astNewARG( proc, src ) = NULL ) then exit function
+		if( astNewARG( proc, astNewCONSTi( lgt ) ) = NULL ) then exit function
+	case else
+		exit function
+	end select
+	function = proc
+end function
+
+'':::::
+'' Build a native counted-WSTRING concatenation expression using a real
+'' descriptor temporary.  The normal AST destructor list owns the temporary,
+'' so nested concatenations and early expression exits do not need fake-WSTRING
+'' pointer lifetime rules.
+function rtlDynWstrConcat( byval lhs as ASTNODE ptr, byval rhs as ASTNODE ptr ) as ASTNODE ptr
+	dim as FBSYMBOL ptr tmp = symbAddTempVar( FB_DATATYPE_WSTRING )
+	dim as ASTNODE ptr t = NULL
+	dim as ASTNODE ptr step1 = any, step2 = any
+
+	astDtorListAdd( tmp )
+
+	'' Initialize the result owner from the first operand; initialization must not
+	'' inspect any prior descriptor state, mirroring STRING temporary creation.
+	step1 = rtlDynWstrAssign( astNewVAR( tmp ), lhs, -2, TRUE )
+	if( step1 = NULL ) then return NULL
+	t = astNewLINK( t, step1, AST_LINK_RETURN_NONE )
+
+	step2 = rtlDynWstrConcatAssign( astNewVAR( tmp ), rhs )
+	if( step2 = NULL ) then return NULL
+	t = astNewLINK( t, step2, AST_LINK_RETURN_NONE )
+
+	'' Expression value is the descriptor itself; statement-level dtor flushing
+	'' will delete it only after the consumer has copied/used it.
+	function = astNewLINK( t, astNewVAR( tmp ), AST_LINK_RETURN_RIGHT )
+end function
+
+private function rtlDynWstrMidResult _
+	( byval src as ASTNODE ptr, byval startx as ASTNODE ptr, byval lenx as ASTNODE ptr ) as ASTNODE ptr
+	dim as ASTNODE ptr proc = astNewCALL( PROCLOOKUP( DWSTRMID ) )
+	if( astNewARG( proc, src, FB_DATATYPE_WSTRING ) = NULL ) then return NULL
+	if( astNewARG( proc, startx ) = NULL ) then return NULL
+	if( astNewARG( proc, lenx ) = NULL ) then return NULL
+	function = proc
+end function
+
+private function rtlDynWstrCaseResult _
+	( byval src as ASTNODE ptr, byval mode as ASTNODE ptr, byval is_lcase as integer ) as ASTNODE ptr
+	dim as ASTNODE ptr proc = astNewCALL( PROCLOOKUP( DWSTRCASE ) )
+	if( mode = NULL ) then mode = astNewCONSTi( 0, FB_DATATYPE_LONG )
+	if( astNewARG( proc, src, FB_DATATYPE_WSTRING ) = NULL ) then return NULL
+	if( astNewARG( proc, mode ) = NULL ) then return NULL
+	if( astNewARG( proc, astNewCONSTi( iif( is_lcase, 1, 0 ), FB_DATATYPE_LONG ) ) = NULL ) then return NULL
+	function = proc
+end function
+
+private function rtlDynWstrTrimSimpleResult _
+	( byval src as ASTNODE ptr, byval side as integer ) as ASTNODE ptr
+	dim as ASTNODE ptr proc = astNewCALL( PROCLOOKUP( DWSTRTRIMSIMPLE ) )
+	if( astNewARG( proc, src, FB_DATATYPE_WSTRING ) = NULL ) then return NULL
+	if( astNewARG( proc, astNewCONSTi( side, FB_DATATYPE_LONG ) ) = NULL ) then return NULL
+	function = proc
+end function
+
+function rtlDynWstrFill( byval chars as ASTNODE ptr, byval c as ASTNODE ptr ) as ASTNODE ptr
+	dim as ASTNODE ptr proc = any
+	if( astGetDataType( c ) = FB_DATATYPE_WSTRING ) then
+		proc = astNewCALL( PROCLOOKUP( DWSTRFILLWSTR ) )
+		if( astNewARG( proc, chars ) = NULL ) then return NULL
+		if( astNewARG( proc, c, FB_DATATYPE_WSTRING ) = NULL ) then return NULL
+	else
+		proc = astNewCALL( PROCLOOKUP( DWSTRFILL ) )
+		if( astNewARG( proc, chars ) = NULL ) then return NULL
+		if( astNewARG( proc, c ) = NULL ) then return NULL
+	end if
+	function = proc
+end function
+
+function rtlDynWstrChr( byval args as integer, exprtb() as ASTNODE ptr ) as ASTNODE ptr
+	dim as ASTNODE ptr proc = astNewCALL( PROCLOOKUP( DWSTRCHR ) )
+	if( astNewARG( proc, astNewCONSTi( args, FB_DATATYPE_LONG ), FB_DATATYPE_LONG ) = NULL ) then return NULL
+	for i as integer = 0 to args-1
+		if( astNewARG( proc, exprtb(i) ) = NULL ) then return NULL
+	next
+	function = proc
+end function
+
+'':::::
+'' Function-return adapter remains only for user procedures returning a managed
+'' WString owner; built-in producers above already return tagged temporaries.
+'':::::
+function rtlDynWstrAllocTempResult( byval expr as ASTNODE ptr ) as ASTNODE ptr
+	dim as ASTNODE ptr proc = astNewCALL( PROCLOOKUP( DWSTRTEMPRESULT ) )
+	if( astNewARG( proc, expr, FB_DATATYPE_WSTRING ) = NULL ) then return NULL
+	function = proc
+end function
+
+function rtlDynWstrAsc( byval expr as ASTNODE ptr, byval posexpr as ASTNODE ptr ) as ASTNODE ptr
+	dim as ASTNODE ptr proc = any
+	function = NULL
+	assert( astGetDataType( expr ) = FB_DATATYPE_WSTRING )
+	proc = astNewCALL( PROCLOOKUP( DWSTRASC ) )
+	if( astNewARG( proc, expr, FB_DATATYPE_WSTRING ) = NULL ) then exit function
+	if( posexpr = NULL ) then posexpr = astNewCONSTi( 1 )
+	if( astNewARG( proc, posexpr ) = NULL ) then exit function
+	function = proc
+end function
+
+private function hDynWstrCoerceForCompare _
+	( _
+		byval src as ASTNODE ptr, _
+		byref prep as ASTNODE ptr _
+	) as ASTNODE ptr
+
+	if( astGetDataType( src ) = FB_DATATYPE_WSTRING ) then
+		return src
+	end if
+
+	dim as FBSYMBOL ptr tmp = symbAddTempVar( FB_DATATYPE_WSTRING )
+	dim as ASTNODE ptr assign = any
+	astDtorListAdd( tmp )
+	assign = rtlDynWstrAssign( astNewVAR( tmp ), src, -2, TRUE )
+	if( assign = NULL ) then return NULL
+	prep = astNewLINK( prep, assign, AST_LINK_RETURN_NONE )
+	function = astNewVAR( tmp )
+end function
+
+private function rtlDynWstrTrimPatternResult _
+	( byval src as ASTNODE ptr, byval patt as ASTNODE ptr, byval side as integer, byval is_any as integer ) as ASTNODE ptr
+	dim as ASTNODE ptr prep = NULL
+	patt = hDynWstrCoerceForCompare( patt, prep )
+	if( patt = NULL ) then return NULL
+	dim as ASTNODE ptr proc = astNewCALL( PROCLOOKUP( DWSTRTRIMPATTERN ) )
+	if( astNewARG( proc, src, FB_DATATYPE_WSTRING ) = NULL ) then return NULL
+	if( astNewARG( proc, patt, FB_DATATYPE_WSTRING ) = NULL ) then return NULL
+	if( astNewARG( proc, astNewCONSTi( side, FB_DATATYPE_LONG ) ) = NULL ) then return NULL
+	if( astNewARG( proc, astNewCONSTi( iif( is_any, 1, 0 ), FB_DATATYPE_LONG ) ) = NULL ) then return NULL
+	if( prep <> NULL ) then
+		function = astNewLINK( prep, proc, AST_LINK_RETURN_RIGHT )
+	else
+		function = proc
+	end if
+end function
+'':::::
+'' Native counted WSTRING assignment entry point
+'':::::
+
 function rtlWstrAssign _
 	( _
 		byval dst as ASTNODE ptr, _
@@ -2840,6 +3665,25 @@ function rtlWstrToA _
 end function
 
 '':::::
+function rtlDynWstrToA _
+	( _
+		byval expr as ASTNODE ptr _
+	) as ASTNODE ptr
+
+	dim as ASTNODE ptr proc = any
+
+	function = NULL
+	proc = astNewCALL( PROCLOOKUP( DWSTRTOSTR ) )
+
+	'' byref src as const native counted WSTRING
+	if( astNewARG( proc, expr, FB_DATATYPE_WSTRING ) = NULL ) then
+		exit function
+	end if
+
+	function = proc
+end function
+
+'':::::
 function rtlAToWstr _
 	( _
 		byval expr as ASTNODE ptr _
@@ -2957,6 +3801,14 @@ function rtlToStr _
 		end if
 
 	case FB_DATACLASS_STRING
+		'' (fork) a managed bare WSTRING is not a narrow string: hand
+		'' back a real narrow conversion.  Returning the expression
+		'' unchanged would leak UTF-16 bytes into zstring ptr parameters
+		'' (FileCopy/FileExists/FileLen/FileDateTime/Dir/Open filenames).
+		if( astGetDataType( expr ) = FB_DATATYPE_WSTRING ) then
+			return rtlDynWstrToA( expr )
+		end if
+
 		'' do nothing
 		return expr
 
@@ -2982,7 +3834,9 @@ function rtlToStr _
 end function
 
 '':::::
-function rtlToWstr _
+'' Internal implementation for legacy raw WCHAR/NUL materialization.
+'' Kept private; callers outside this module must use rtlWstrRawBoundary().
+private function hLegacyWstrFromExpr _
 	( _
 		byval expr as ASTNODE ptr _
 	) as ASTNODE ptr
@@ -2994,6 +3848,15 @@ function rtlToWstr _
 	function = NULL
 
 	dtype = astGetDataType( expr )
+
+	'' Compatibility bridge: WSTR(native-counted-WSTRING) historically yields
+	'' an owned legacy WSTRING temporary.  Keep the native descriptor ABI while
+	'' returning the logical FB_DATATYPE_WCHAR expected by old WSTR consumers.
+	if( dtype = FB_DATATYPE_WSTRING ) then
+		proc = astNewCALL( PROCLOOKUP( DWSTRTOWSTR ) )
+		if( astNewARG( proc, expr, FB_DATATYPE_WSTRING ) = NULL ) then exit function
+		return proc
+	end if
 
 	'' constant? evaluate
 	if( astIsCONST( expr ) ) then
@@ -3076,6 +3939,60 @@ function rtlToWstr _
 
 	function = proc
 
+end function
+
+'':::::
+'' Explicit string-family/managed-WSTRING -> raw WCHAR/NUL compatibility boundary.
+function rtlWstrRawBoundary _
+	( _
+		byval expr as ASTNODE ptr _
+	) as ASTNODE ptr
+
+	function = hLegacyWstrFromExpr( expr )
+end function
+
+'':::::
+'' Materialize an expression as managed FBWSTRING.  Any scalar->raw conversion
+'' needed to reuse legacy numeric formatting remains private inside this helper.
+function rtlDynWstrFromExpr( byval src as ASTNODE ptr ) as ASTNODE ptr
+	if( src = NULL ) then return NULL
+
+	'' Materialize into managed FBWSTRING without routing scalar values through
+	'' the legacy raw-WCHAR formatter.  Numeric/boolean/pointer formatting is
+	'' deliberately delegated to the mature FBSTRING conversion pipeline, then
+	'' widened through the existing FBSTRING -> FBWSTRING assignment bridge.
+	''
+	'' UDTs are different: a legacy "extends WString" UDT may expose a genuine
+	'' ByRef raw-WSTRING cast.  Resolve that cast by type here; it is a real raw
+	'' compatibility boundary, not a scalar-formatting intermediate.
+	'' First classify by concrete string-family dtype.  FB_DATATYPE_WCHAR is
+	'' represented by the INTEGER dataclass internally, but semantically it is a
+	'' raw wide-string expression here and must never be numeric-formatted.
+	select case as const astGetDataType( src )
+	case FB_DATATYPE_WSTRING, FB_DATATYPE_WCHAR, FB_DATATYPE_STRING, _
+	     FB_DATATYPE_FIXSTR, FB_DATATYPE_CHAR
+		'' Already a string-family expression; rtlDynWstrAssign() below selects
+		'' the managed/native/raw boundary from the AST dtype.
+
+	case else
+		select case as const astGetDataClass( src )
+		case FB_DATACLASS_INTEGER, FB_DATACLASS_FPOINT
+			src = rtlToStr( src, FALSE )
+			if( src = NULL ) then return NULL
+
+		case FB_DATACLASS_UDT
+			if( astTryOvlStringCONV( src ) = FALSE ) then return NULL
+
+		case else
+			return NULL
+		end select
+	end select
+
+	dim as FBSYMBOL ptr tmp = symbAddTempVar( FB_DATATYPE_WSTRING )
+	dim as ASTNODE ptr proc = rtlDynWstrAssign( astNewVAR( tmp ), src, -2, TRUE )
+	if( proc = NULL ) then return NULL
+	astDtorListAdd( tmp )
+	function = astNewLINK( proc, astNewVAR( tmp ), AST_LINK_RETURN_RIGHT )
 end function
 
 '':::::
@@ -3164,6 +4081,10 @@ function rtlStrMid _
 
 	astTryOvlStringCONV( expr1 )
 
+	if( astGetDataType( expr1 ) = FB_DATATYPE_WSTRING ) then
+		return rtlDynWstrMidResult( expr1, expr2, expr3 )
+	end if
+
 	if( astGetDataType( expr1 ) <> FB_DATATYPE_WCHAR ) then
 		proc = astNewCALL( PROCLOOKUP( STRMID ) )
 	else
@@ -3203,12 +4124,36 @@ function rtlStrAssignMid _
 
 	astTryOvlStringCONV( expr1 )
 
+	'' Native counted WSTRING MID assignment uses descriptor lengths and never
+	'' changes dst.len; embedded NUL is ordinary content.
+	if( astGetDataType( expr1 ) = FB_DATATYPE_WSTRING ) then
+		dim as ASTNODE ptr prep = NULL
+		expr4 = hDynWstrCoerceForCompare( expr4, prep )
+		if( expr4 = NULL ) then exit function
+		proc = astNewCALL( PROCLOOKUP( DWSTRMIDASSIGN ) )
+		if( astNewARG( proc, expr1, FB_DATATYPE_WSTRING ) = NULL ) then exit function
+		if( astNewARG( proc, expr2 ) = NULL ) then exit function
+		if( astNewARG( proc, expr3 ) = NULL ) then exit function
+		if( astNewARG( proc, expr4, FB_DATATYPE_WSTRING ) = NULL ) then exit function
+		astAdd( astNewLINK( prep, proc, AST_LINK_RETURN_NONE ) )
+		function = proc
+		exit function
+	end if
+
 	''
 	if( astGetDataType( expr1 ) <> FB_DATATYPE_WCHAR ) then
 		proc = astNewCALL( PROCLOOKUP( STRASSIGNMID ) )
 		dst_len = -1
 	else
 		proc = astNewCALL( PROCLOOKUP( WSTRASSIGNMID ) )
+		'' Raw WString * N / WString Ptr is a compatibility boundary.  A managed
+		'' bare-WString RHS is converted here (and only here) to the NUL-terminated
+		'' WCHAR view expected by the legacy MID runtime, mirroring String/ZString
+		'' boundary materialization instead of changing the WChr()/IIF producer.
+		if( astGetDataType( expr4 ) = FB_DATATYPE_WSTRING ) then
+			expr4 = rtlWstrRawBoundary( expr4 )
+			if( expr4 = NULL ) then exit function
+		end if
 		'' always calc len before pushing the param
 		dst_len = rtlCalcStrLen( expr1, FB_DATATYPE_WCHAR )
 	end if
@@ -3261,6 +4206,8 @@ function rtlStrLRSet _
 	ddtype = astGetDataType( dstexpr )
 
 	select case ddtype
+	case FB_DATATYPE_WSTRING
+		proc = astNewCALL( PROCLOOKUP( DWSTRLRSET ) )
 	case FB_DATATYPE_WCHAR
 		proc = astNewCALL( iif( is_rset, _
 		                        PROCLOOKUP( WSTRRSET ), _
@@ -3290,9 +4237,15 @@ function rtlStrLRSet _
 		end if
 	end if
 
-	'' src as string
+	'' src as string/native wstring
 	if( astNewARG( proc, srcexpr ) = NULL ) then
 		exit function
+	end if
+
+	if( ddtype = FB_DATATYPE_WSTRING ) then
+		if( astNewARG( proc, astNewCONSTi( iif( is_rset, 1, 0 ), FB_DATATYPE_LONG ), FB_DATATYPE_LONG ) = NULL ) then
+			exit function
+		end if
 	end if
 
 	''
@@ -3422,7 +4375,9 @@ function rtlStrAsc _
 	astTryOvlStringCONV( expr )
 
 	''
-	if( astGetDataType( expr ) <> FB_DATATYPE_WCHAR ) then
+	if( astGetDataType( expr ) = FB_DATATYPE_WSTRING ) then
+		return rtlDynWstrAsc( expr, posexpr )
+	elseif( astGetDataType( expr ) <> FB_DATATYPE_WCHAR ) then
 		proc = astNewCALL( PROCLOOKUP( STRASC ) )
 	else
 		proc = astNewCALL( PROCLOOKUP( WSTRASC ) )
@@ -3525,6 +4480,20 @@ function rtlStrInstr _
 
 	dtype = astGetDataType( nd_text )
 
+	'' Native counted WSTRING: preserve embedded NUL by coercing only the
+	'' pattern into a native descriptor and using explicit descriptor lengths.
+	if( dtype = FB_DATATYPE_WSTRING ) then
+		dim as ASTNODE ptr prep = NULL
+		nd_pattern = hDynWstrCoerceForCompare( nd_pattern, prep )
+		if( nd_pattern = NULL ) then exit function
+		f = iif( search_any, PROCLOOKUP( DWSTRINSTRANY ), PROCLOOKUP( DWSTRINSTR ) )
+		proc = astNewCALL( f )
+		if( astNewARG( proc, nd_start ) = NULL ) then exit function
+		if( astNewARG( proc, nd_text, FB_DATATYPE_WSTRING ) = NULL ) then exit function
+		if( astNewARG( proc, nd_pattern, FB_DATATYPE_WSTRING ) = NULL ) then exit function
+		return astNewLINK( prep, proc, AST_LINK_RETURN_RIGHT )
+	end if
+
 	''
 	if( search_any ) then
 		if( dtype <> FB_DATATYPE_WCHAR ) then
@@ -3581,6 +4550,18 @@ function rtlStrInstrRev _
 
 	dtype = astGetDataType( nd_text )
 
+	if( dtype = FB_DATATYPE_WSTRING ) then
+		dim as ASTNODE ptr prep = NULL
+		nd_pattern = hDynWstrCoerceForCompare( nd_pattern, prep )
+		if( nd_pattern = NULL ) then exit function
+		f = iif( search_any, PROCLOOKUP( DWSTRINSTRREVANY ), PROCLOOKUP( DWSTRINSTRREV ) )
+		proc = astNewCALL( f )
+		if( astNewARG( proc, nd_text, FB_DATATYPE_WSTRING ) = NULL ) then exit function
+		if( astNewARG( proc, nd_pattern, FB_DATATYPE_WSTRING ) = NULL ) then exit function
+		if( astNewARG( proc, nd_start ) = NULL ) then exit function
+		return astNewLINK( prep, proc, AST_LINK_RETURN_RIGHT )
+	end if
+
 	''
 	if( search_any ) then
 		if( dtype <> FB_DATATYPE_WCHAR ) then
@@ -3635,6 +4616,14 @@ function rtlStrTrim _
 	end if
 
 	dtype = astGetDataType( nd_text )
+
+	if( dtype = FB_DATATYPE_WSTRING ) then
+		if( (nd_pattern = NULL) and (is_any = FALSE) ) then
+			return rtlDynWstrTrimSimpleResult( nd_text, 0 )
+		else
+			return rtlDynWstrTrimPatternResult( nd_text, nd_pattern, 0, is_any )
+		end if
+	end if
 
 	''
 	if( is_any ) then
@@ -3694,6 +4683,14 @@ function rtlStrRTrim _
 
 	dtype = astGetDataType( nd_text )
 
+	if( dtype = FB_DATATYPE_WSTRING ) then
+		if( (nd_pattern = NULL) and (is_any = FALSE) ) then
+			return rtlDynWstrTrimSimpleResult( nd_text, 1 )
+		else
+			return rtlDynWstrTrimPatternResult( nd_text, nd_pattern, 1, is_any )
+		end if
+	end if
+
 	''
 	if( is_any ) then
 		if( dtype <> FB_DATATYPE_WCHAR ) then
@@ -3751,6 +4748,14 @@ function rtlStrLTrim _
 	end if
 
 	dtype = astGetDataType( nd_text )
+
+	if( dtype = FB_DATATYPE_WSTRING ) then
+		if( (nd_pattern = NULL) and (is_any = FALSE) ) then
+			return rtlDynWstrTrimSimpleResult( nd_text, -1 )
+		else
+			return rtlDynWstrTrimPatternResult( nd_text, nd_pattern, -1, is_any )
+		end if
+	end if
 
 	''
 	if( is_any ) then
@@ -3895,6 +4900,10 @@ function rtlStrCase _
 	end if
 
 	astTryOvlStringCONV( expr )
+
+	if( astGetDataType( expr ) = FB_DATATYPE_WSTRING ) then
+		return rtlDynWstrCaseResult( expr, mode, is_lcase )
+	end if
 
 	if( is_lcase ) then
 		if( astGetDataType( expr ) = FB_DATATYPE_WCHAR ) then

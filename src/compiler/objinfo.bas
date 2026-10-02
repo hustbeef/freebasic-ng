@@ -869,9 +869,6 @@ private sub hLoadFbctinfFromObj( )
 		case FB_CPUFAMILY_X86
 			INFO( "reading i386 COFF: " + parser.filename )
 			hLoadFbctinfFromCOFF( &h014C )
-		case FB_CPUFAMILY_AARCH64
-			INFO( "reading ARM64 COFF: " + parser.filename )
-			hLoadFbctinfFromCOFF( &hAA64 )
 		end select
 	elseif( fbTargetSupportsELF( ) ) then
 		select case( fbGetCpuFamily( ) )

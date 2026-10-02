@@ -74,6 +74,7 @@ declare function hGetDataType _
 		12, _                                   '' double
 		13, _                                   '' string
 		14, _                                   '' fix-len string
+		19, _                                   '' native var-len wstring descriptor
 		17  _                                   '' va_list
 	}
 
@@ -250,6 +251,15 @@ sub edbgEmitHeader( byval filename as zstring ptr )
 		hEmitSTABS( STAB_TYPE_LSYM, stabsTb(i), 0, 0, "0" )
 		ctx.typecnt += 1
 	next
+
+	'' Native counted WSTRING is a descriptor, not FBSTRING and not a legacy
+	'' WCHAR array. STABS here is 32-bit-only, so the descriptor is 12 bytes.
+	'' Keep its data member pointed at the target's existing WCHAR debug type.
+	hEmitSTABS( STAB_TYPE_LSYM, @"wstring:t19=s12data:20,0,32;len:1,32,32;size:1,64,32;;", 0, 0, "0" )
+	ctx.typecnt += 1
+	var pwchar = "pwchar:t20=*" + str( remapTB(FB_DATATYPE_WCHAR) ) + ";"
+	hEmitSTABS( STAB_TYPE_LSYM, strptr( pwchar ), 0, 0, "0" )
+	ctx.typecnt += 1
 
 	emitWriteStr( "" )
 

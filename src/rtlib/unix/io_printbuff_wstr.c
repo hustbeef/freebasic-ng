@@ -11,15 +11,20 @@ void fb_ConsolePrintBufferWstrEx( const FB_WCHAR *buffer, size_t chars, int mask
 	size_t avail, avail_len;
 	char *temp;
 
+	/* Always treat the logical WCHAR count as authoritative.  Even when the
+	   console has not been initialized (for example stdout redirection),
+	   Unix stdout is a byte stream and must receive UTF-8 rather than raw
+	   host-width FB_WCHAR data. */
+	temp = alloca( chars * 4 + 1 );
+
 	if( !__fb_con.inited )
 	{
-		/* !!!FIXME!!! is this ok or should it be converted to UTF-8 too? */
-		fwrite( buffer, sizeof( FB_WCHAR ), chars, stdout );
+		ssize_t bytes;
+		fb_WCharToUTF( FB_FILE_ENCOD_UTF8, buffer, chars, temp, &bytes );
+		fwrite( temp, 1, bytes, stdout );
 		fflush( stdout );
 		return;
 	}
-
-	temp = alloca( chars * 4 + 1 );
 
 	BG_LOCK( );
 	fb_hRecheckConsoleSize( TRUE );
@@ -52,7 +57,7 @@ void fb_ConsolePrintBufferWstrEx( const FB_WCHAR *buffer, size_t chars, int mask
 
 	fputs( ENTER_UTF8, stdout );
 
-	fputs( temp, stdout );
+	fwrite( temp, 1, bytes, stdout );
 
 	fputs( EXIT_UTF8, stdout );
 

@@ -2,6 +2,11 @@
 
 #include "fb.h"
 
+#if defined HOST_WIN32
+#include <windows.h>
+#include <locale.h>
+#endif
+
 #if !defined( HOST_DOS )
 
 static ssize_t fb_wstr_ConvFromA_nomultibyte(FB_WCHAR *dst, ssize_t dst_chars, const char *src)
@@ -67,6 +72,94 @@ ssize_t fb_wstr_ConvFromA(FB_WCHAR *dst, ssize_t dst_chars, const char *src)
 	return fb_wstr_ConvFromA_nomultibyte( dst, dst_chars, src );
 
 #endif
+}
+
+/* Explicit-length STRING -> WSTRING conversion for native counted WSTRING.
+   Unlike fb_wstr_ConvFromA(), embedded NUL bytes are data and do not terminate
+   the source.  Conversion otherwise follows the current C locale semantics. */
+ssize_t fb_wstr_ConvFromAN(FB_WCHAR *dst, ssize_t dst_chars, const char *src, ssize_t src_bytes)
+{
+    ssize_t out = 0;
+    ssize_t pos = 0;
+
+    if( dst == NULL || dst_chars < 0 )
+        return 0;
+    if( src == NULL || src_bytes <= 0 ) {
+        dst[0] = _LC('\0');
+        return 0;
+    }
+
+#if defined DISABLE_WCHAR
+    while( pos < src_bytes && out < dst_chars )
+        dst[out++] = (unsigned char)src[pos++];
+#else
+    /* PERF5: fast-path counted 7-bit STRING -> WSTRING while preserving legacy
+       conversion for every non-ASCII byte and unusual locale. */
+    {
+        int ascii_fast_ok = (MB_CUR_MAX == 1);
+#if defined HOST_WIN32
+        if( !ascii_fast_ok ) {
+            unsigned int cp = ___lc_codepage_func();
+            if( cp == GetACP() || cp == GetOEMCP() || cp == CP_UTF8 )
+                ascii_fast_ok = 1;
+        }
+#endif
+        if( ascii_fast_ok ) {
+            ssize_t n = src_bytes;
+            ssize_t i;
+            if( n > dst_chars ) n = dst_chars;
+            for( i = 0; i < n; ++i ) if( ((unsigned char)src[i]) > 127 ) break;
+            if( i == n ) {
+                for( i = 0; i < n; ++i ) dst[i] = (FB_WCHAR)(unsigned char)src[i];
+                dst[n] = _LC('\0');
+                return n;
+            }
+        }
+    }
+
+    {
+        mbstate_t state;
+        memset( &state, 0, sizeof(state) );
+
+        while( pos < src_bytes && out < dst_chars ) {
+            wchar_t wc;
+            size_t n;
+            unsigned char c = (unsigned char)src[pos];
+
+            /* mbrtowc() reports 0 for NUL.  In a counted STRING that is a
+               character, not an end marker; consume exactly one byte and keep
+               converting the remainder. */
+            if( c == 0 ) {
+                dst[out++] = _LC('\0');
+                ++pos;
+                memset( &state, 0, sizeof(state) );
+                continue;
+            }
+
+            n = mbrtowc( &wc, src + pos, (size_t)(src_bytes - pos), &state );
+            if( n == (size_t)-1 || n == (size_t)-2 ) {
+                /* Match fb_wstr_ConvFromA()'s best-effort fallback: preserve
+                   ASCII and replace an invalid/non-convertible byte by '?'. */
+                dst[out++] = (c <= 127) ? (FB_WCHAR)c : (FB_WCHAR)'?';
+                ++pos;
+                memset( &state, 0, sizeof(state) );
+                continue;
+            }
+            if( n == 0 ) {
+                dst[out++] = _LC('\0');
+                ++pos;
+                memset( &state, 0, sizeof(state) );
+                continue;
+            }
+
+            dst[out++] = (FB_WCHAR)wc;
+            pos += (ssize_t)n;
+        }
+    }
+#endif
+
+    dst[out] = _LC('\0');
+    return out;
 }
 
 FBCALL FB_WCHAR *fb_StrToWstr( const char *src )

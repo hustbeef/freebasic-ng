@@ -84,6 +84,51 @@ private function hThreadCallMapType _
 
 end function
 
+'' Native counted WSTRING owns heap storage.  THREADCALL may only borrow an
+'' existing descriptor for an exact BYREF lvalue.  Do not let the ordinary
+'' call-lowering temporaries escape asynchronously: reverse String->WSTRING
+'' copy-back and non-addressable WSTRING expressions must remain unsupported.
+private function hThreadCallCanPassNativeWstrByRef _
+	( _
+		byval argexpr as ASTNODE ptr, _
+		byval hascopyback as integer _
+	) as integer
+
+	function = FALSE
+
+	if( hascopyback ) then
+		exit function
+	end if
+
+	dim as ASTNODE ptr n = astSkipNoConvCAST( argexpr )
+	if( n = NULL ) then exit function
+	if( n->class <> AST_NODECLASS_ADDROF ) then exit function
+
+	n = astSkipNoConvCAST( n->l )
+	if( n = NULL ) then exit function
+	if( typeGetDtOnly( astGetDataType( n ) ) <> FB_DATATYPE_WSTRING ) then exit function
+	if( astCanTakeAddrOf( n ) = FALSE ) then exit function
+
+	'' Ordinary parameter lowering may hide a descriptor temporary behind LINKs.
+	'' THREADCALL cannot borrow such a temporary because its destructor runs as
+	'' soon as the launch expression finishes.  Only a real caller-owned lvalue
+	'' may cross this asynchronous BYREF boundary.
+	n = astGetEffectiveNode( n )
+	if( n = NULL ) then exit function
+	select case as const( n->class )
+	case AST_NODECLASS_VAR, AST_NODECLASS_IDX, AST_NODECLASS_FIELD, AST_NODECLASS_DEREF
+	case else
+		exit function
+	end select
+
+	dim as FBSYMBOL ptr argsym = astGetSymbol( n )
+	if( argsym <> NULL ) then
+		if( symbIsTemp( argsym ) ) then exit function
+	end if
+
+	function = TRUE
+end function
+
 private function hThreadCallPushStruct _
 	( _
 		byval funcexpr as ASTNODE ptr, _
@@ -257,16 +302,34 @@ function rtlThreadCall(byval callexpr as ASTNODE ptr) as ASTNODE ptr
 		dim as integer tctype = -1
 		mode = symbGetParamMode( param )
 
-		tctype = hThreadCallMapType( param )
-		select case mode
-			case FB_PARAMMODE_BYVAL
-			case FB_PARAMMODE_BYREF, FB_PARAMMODE_BYDESC
-				if( tctype <> -1 ) then
+		dim as integer paramdtype = typeGetDtOnly( symbGetType( param ) )
+		if( paramdtype = FB_DATATYPE_WSTRING ) then
+			'' Exact caller-owned managed WSTRING may be borrowed BYREF.
+			'' BYVAL uses a dedicated runtime argument kind. Ordinary
+			'' call lowering has already materialized an independent descriptor;
+			'' fb_ThreadCall() clones it synchronously before that expression temp
+			'' is destroyed, and the worker thread owns/frees the clone.
+			tctype = -1
+			if( mode = FB_PARAMMODE_BYREF ) then
+				if( hThreadCallCanPassNativeWstrByRef( argexpr( i ), _
+				                                      callexpr->call.strtail <> NULL ) ) then
 					tctype = FB_THREADCALL_PTR
 				end if
-			case else
-				tctype = -1
-		end select
+			elseif( mode = FB_PARAMMODE_BYVAL ) then
+				tctype = FB_THREADCALL_DYNWSTRING
+			end if
+		else
+			tctype = hThreadCallMapType( param )
+			select case mode
+				case FB_PARAMMODE_BYVAL
+				case FB_PARAMMODE_BYREF, FB_PARAMMODE_BYDESC
+					if( tctype <> -1 ) then
+						tctype = FB_THREADCALL_PTR
+					end if
+				case else
+					tctype = -1
+			end select
+		end if
 
 		'' push parameter type
 		dim as FBSYMBOL ptr stype = symbGetSubType( param )

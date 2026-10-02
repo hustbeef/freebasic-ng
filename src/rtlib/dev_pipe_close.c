@@ -4,7 +4,7 @@
 
 int fb_DevPipeClose( FB_FILE *handle )
 {
-#if !defined( HOST_AMIGA ) && (defined( HOST_DOS ) || defined( HOST_UNIX ) || defined( HOST_WIN32 ))
+#if defined( HOST_DOS ) || defined( HOST_UNIX ) || defined( HOST_WIN32 )
 	FILE *fp;
 
 	FB_LOCK();

@@ -42,22 +42,37 @@ private function hWstrLiteralConcat _
 	) as ASTNODE ptr
 
 	dim as FBSYMBOL ptr s = any, ls = any, rs = any
+	dim as integer ls_units = any, rs_units = any
 
 	ls = astGetSymbol( l )
 	rs = astGetSymbol( r )
 
+	'' Real unit counts: a WChr() const holding an astral code point
+	'' decodes to a surrogate PAIR (2 units) while its logical length
+	'' stays 1.  Lengths must come from the decoded text or the last
+	'' unit(s) of the folded literal would be lost.  The glued text keeps
+	'' its internal escapes; the backend unescapes at emission.
+	ls_units = symbGetWstrLength( ls )
+	rs_units = symbGetWstrLength( rs )
+	if( symbGetType( ls ) = FB_DATATYPE_WCHAR ) then
+		hUnescapeW( symbGetVarLitTextW( ls ), ls_units )
+	end if
+	if( symbGetType( rs ) = FB_DATATYPE_WCHAR ) then
+		hUnescapeW( symbGetVarLitTextW( rs ), rs_units )
+	end if
+
 	if( symbGetType( ls ) <> FB_DATATYPE_WCHAR ) then
 		'' new len = both strings' len less the 2 null-chars
 		s = symbAllocWstrConst( wstr( *symbGetVarLitText( ls ) ) + *symbGetVarLitTextW( rs ), _
-		                        symbGetStrLength( ls ) + symbGetWstrLength( rs ) )
+		                        symbGetStrLength( ls ) + rs_units )
 
 	elseif( symbGetType( rs ) <> FB_DATATYPE_WCHAR ) then
 		s = symbAllocWstrConst( *symbGetVarLitTextW( ls ) + wstr( *symbGetVarLitText( rs ) ), _
-		                        symbGetWstrLength( ls ) + symbGetStrLength( rs ) )
+		                        ls_units + symbGetStrLength( rs ) )
 
 	else
 		s = symbAllocWstrConst( *symbGetVarLitTextW( ls ) + *symbGetVarLitTextW( rs ), _
-		                        symbGetWstrLength( ls ) + symbGetWstrLength( rs ) )
+		                        ls_units + rs_units )
 	end if
 
 	function = astNewVAR( s )
@@ -203,7 +218,7 @@ private sub hToStr(byref l as ASTNODE ptr, byref r as ASTNODE ptr)
 	'' convert left operand to string if needed
 	select case as const ldtype
 	case FB_DATATYPE_STRING, FB_DATATYPE_FIXSTR, _
-		 FB_DATATYPE_CHAR, FB_DATATYPE_WCHAR
+		 FB_DATATYPE_CHAR, FB_DATATYPE_WCHAR, FB_DATATYPE_WSTRING
 
 	'' not a string..
 	case else
@@ -219,15 +234,19 @@ private sub hToStr(byref l as ASTNODE ptr, byref r as ASTNODE ptr)
 	'' convert the right operand to string if needed
 	select case as const rdtype
 	case FB_DATATYPE_STRING, FB_DATATYPE_FIXSTR, _
-		 FB_DATATYPE_CHAR, FB_DATATYPE_WCHAR
+		 FB_DATATYPE_CHAR, FB_DATATYPE_WCHAR, FB_DATATYPE_WSTRING
 
 	'' not a string..
 	case else
-		'' expression is not a wstring?
-		if( ldtype <> FB_DATATYPE_WCHAR ) then
-			r = rtlToStr( r, FALSE )
+		'' Keep managed-WSTRING concatenation inside the managed family.
+		'' Only a genuinely raw WCHAR expression may request the legacy raw
+		'' scalar-to-WCHAR conversion here.
+		if( ldtype = FB_DATATYPE_WSTRING ) then
+			r = rtlDynWstrFromExpr( r )
+		elseif( ldtype = FB_DATATYPE_WCHAR ) then
+			r = rtlWstrRawBoundary( r )
 		else
-			r = rtlToWstr( r )
+			r = rtlToStr( r, FALSE )
 		end if
 
 		if( r = NULL ) then
@@ -721,6 +740,33 @@ private function hShouldWarnAboutMixedBool( byval l as ASTNODE ptr, byval r as A
 end function
 
 '':::::
+'' Managed-WSTRING concat node. Mixed operands retain their own AST types;
+'' conversion/materialization happens during WSTRING lowering, never from parser context.
+private function hNewDynWstrConcatBop _
+	( _
+		byval l as ASTNODE ptr, _
+		byval r as ASTNODE ptr, _
+		byval ex as FBSYMBOL ptr = NULL, _
+		byval options as AST_OPOPT = 0 _
+	) as ASTNODE ptr
+
+	dim as ASTNODE ptr n = astNewNode( AST_NODECLASS_BOP, FB_DATATYPE_WSTRING, NULL )
+	n->l = l
+	n->r = r
+	n->op.ex = ex
+	n->op.op = AST_OP_ADD
+
+	'' Match normal BOP result allocation rules without routing the managed
+	'' WSTRING back through the legacy STRING/WCHAR type-resolution path.
+	select case env.clopt.backend
+	case FB_BACKEND_GCC, FB_BACKEND_CLANG
+		options or= AST_OPOPT_ALLOCRES
+	end select
+	n->op.options = options
+	function = n
+end function
+
+'':::::
 function astNewBOP _
 	( _
 		byval op as integer, _
@@ -820,6 +866,22 @@ function astNewBOP _
 	end if
 	if( typeGet( rdtype ) = FB_DATATYPE_ENUM ) then
 		hConvOperand( FB_DATATYPE_INTEGER, rdtype, rdclass, r )
+	end if
+
+
+	'' Native counted WSTRING is a distinct datatype.  Binary concatenation now
+	'' produces a real native temporary descriptor; all other operators remain
+	'' blocked until their length-aware RTL paths are migrated.
+	if( (typeGet( ldtype ) = FB_DATATYPE_WSTRING) or _
+	    (typeGet( rdtype ) = FB_DATATYPE_WSTRING) ) then
+		if( op = AST_OP_ADD ) then
+			return hNewDynWstrConcatBop( l, r, ex, options )
+		elseif( astOpIsRelational( op ) ) then
+			l = rtlDynWstrCompare( l, r )
+			if( l = NULL ) then exit function
+			return astNewBOP( op, l, astNewCONSTi( 0 ), ex, options or AST_OPOPT_NOCOERCION )
+		end if
+		exit function
 	end if
 
 	'' both zstrings? treat as string..

@@ -9,6 +9,38 @@
 #include once "rtl.bi"
 #include once "ast.bi"
 
+private function hIsDynWstrDirectInitOperand( byval n as ASTNODE ptr ) as integer
+	if( n = NULL ) then return FALSE
+	if( astGetDataType( n ) <> FB_DATATYPE_WSTRING ) then return FALSE
+	if( astGetResultTempSym( n ) <> NULL ) then return FALSE
+	select case as const n->class
+	case AST_NODECLASS_VAR
+		return TRUE
+	case AST_NODECLASS_DEREF
+		'' ByRef parameters lower as DEREF(VAR).  Exclude arbitrary pointer
+		'' expressions so evaluation remains side-effect free.
+		return (n->l <> NULL) andalso (n->l->class = AST_NODECLASS_VAR)
+	end select
+	return FALSE
+end function
+
+private function hDynWstrDirectInitOperandIsSym _
+	( _
+		byval n as ASTNODE ptr, _
+		byval sym as FBSYMBOL ptr _
+	) as integer
+	if( n = NULL ) or (sym = NULL) then return FALSE
+	select case as const n->class
+	case AST_NODECLASS_VAR
+		return astGetSymbol( n ) = sym
+	case AST_NODECLASS_DEREF
+		if( (n->l <> NULL) andalso (n->l->class = AST_NODECLASS_VAR) ) then
+			return astGetSymbol( n->l ) = sym
+		end if
+	end select
+	return FALSE
+end function
+
 private function hCheckStringOps _
 	( _
 		byval l as ASTNODE ptr, _
@@ -485,12 +517,15 @@ function astNewASSIGN _
 	dim as FBSYMBOL ptr lsubtype = any, proc = any
 	dim as FB_ERRMSG err_num = any
 	dim as integer do_move = any
+	dim as longint wlen = any
 
 	function = NULL
 
 	if( (l = NULL) or (r = NULL) ) then
 		exit function
 	end if
+
+
 
 	ldfull = astGetFullType( l )
 	ldtype = typeGet( ldfull )
@@ -578,6 +613,102 @@ function astNewASSIGN _
 	rdfull = astGetFullType( r )
 	rdtype = typeGet( rdfull )
 	rdclass = typeGetClass( rdtype )
+
+	'' Managed WSTRING destination.  Mirror FBSTRING initialization semantics:
+	'' initialization never reads old dst state, and a compiler-proven disposable
+	'' descriptor temporary can transfer ownership instead of deep-copying.
+	if( ldtype = FB_DATATYPE_WSTRING ) then
+		if( (options and AST_OPOPT_ISINI) <> 0 ) and (rdtype = FB_DATATYPE_WSTRING) then
+			'' PERF4: build a simple managed-WSTRING pair concat directly into a
+			'' fresh VAR destination.  Do not admit FIELD/IDX/arbitrary pointer
+			'' destinations or a source that is the destination itself; those stay
+			'' on the already-proven temp + move-init path.
+			if( (l->class = AST_NODECLASS_VAR) andalso _
+			    (r->class = AST_NODECLASS_BOP) andalso (r->op.op = AST_OP_ADD) ) then
+				dim as FBSYMBOL ptr dstsym = astGetSymbol( l )
+				if( (dstsym <> NULL) andalso _
+				    hIsDynWstrDirectInitOperand( r->l ) andalso _
+				    hIsDynWstrDirectInitOperand( r->r ) andalso _
+				    (hDynWstrDirectInitOperandIsSym( r->l, dstsym ) = FALSE) andalso _
+				    (hDynWstrDirectInitOperandIsSym( r->r, dstsym ) = FALSE) ) then
+					dim as ASTNODE ptr lhs = r->l, rhs = r->r
+					r->l = NULL
+					r->r = NULL
+					astDelNode( r )
+					return rtlDynWstrConcatInitPair( l, lhs, rhs )
+				end if
+			end if
+
+			'' A managed-WSTRING concat is still a BOP at this point.  Lower it
+			'' before checking result-temp ownership so that initialization can
+			'' consume the compiler temporary via move-init instead of deep-copying.
+			if( (r->class = AST_NODECLASS_BOP) andalso (r->op.op = AST_OP_ADD) ) then
+				r = astUpdStrConcat( r )
+				if( r = NULL ) then return NULL
+			end if
+
+			'' Move only when the AST itself proves that the expression result is
+			'' owned by a compiler temp.  The producer kind is intentionally opaque
+			'' here; astGetResultTempSym() handles the supported AST result shapes.
+			if( astGetResultTempSym( r ) <> NULL ) then
+				return rtlDynWstrMoveInit( l, r )
+			end if
+			return rtlDynWstrInit( l, r )
+		end if
+
+		'' Keep managed-WSTRING -> managed-WSTRING ordinary assignments as real
+		'' ASSIGN AST nodes until astOptAssignment().  This is the FBSTRING-style
+		'' late-lowering hook needed for concat flattening.  Cross-family/raw
+		'' assignments stay on their established compatibility paths below.
+		if( rdtype <> FB_DATATYPE_WSTRING ) then
+			'' Mirror STRING assignment legality: only string-family/raw-wide sources
+			'' reach the managed WSTRING conversion path here.  Cast overloads were
+			'' already resolved above; arbitrary scalar/other types must not gain an
+			'' implicit conversion merely because legacy raw-WSTRING conversion exists.
+			select case rdtype
+			case FB_DATATYPE_STRING, FB_DATATYPE_FIXSTR, FB_DATATYPE_CHAR, FB_DATATYPE_WCHAR
+				return rtlDynWstrAssign( l, r )
+			case else
+				return NULL
+			end select
+		end if
+	elseif( rdtype = FB_DATATYPE_WSTRING ) then
+	'' Compatibility bridge into legacy fixed WSTRING storage.  The destination
+	'' capacity is known at compile time, while the source keeps its counted
+	'' length (including embedded WCHAR(0)).  Raw WSTRING pointers are excluded
+	'' because their capacity/ownership is unknown.
+	if( ldtype = FB_DATATYPE_WCHAR ) then
+		wlen = rtlCalcStrLen( l, FB_DATATYPE_WCHAR )
+		if( wlen > 0 ) then
+			n = astNewCALL( PROCLOOKUP( DWSTRCOPYTOW ) )
+			if( astNewARG( n, l ) = NULL ) then return NULL
+			if( astNewARG( n, astNewCONSTi( wlen ) ) = NULL ) then return NULL
+			if( astNewARG( n, r, FB_DATATYPE_WSTRING ) = NULL ) then return NULL
+			return n
+		else
+			'' Raw wide destination with unknown capacity (e.g. *p where
+			'' p is a WString Ptr): expose the source's NUL-terminated data
+			'' and take the legacy raw-WCHAR assign, same as fixed/literal
+			'' wide sources.  Copying is unbounded, like ZString semantics.
+			r = rtlWstrRawBoundary( r )
+			if( r = NULL ) then return NULL
+			return rtlWstrAssign( l, r, (options and AST_OPOPT_ISINI) <> 0 )
+		end if
+	end if
+
+		'' Native counted WSTRING -> 8-bit string family. Convert to a counted
+		'' temporary FBSTRING first so embedded WCHAR(0) remains data for STRING.
+		'' Fixed STRING/ZSTRING destinations then use their established truncation
+		'' and padding rules through rtlStrAssign().
+		select case ldtype
+		case FB_DATATYPE_STRING, FB_DATATYPE_FIXSTR, FB_DATATYPE_CHAR
+			r = rtlDynWstrToA( r )
+			if( r = NULL ) then return NULL
+			return rtlStrAssign( l, r, (options and AST_OPOPT_ISINI) <> 0 )
+		end select
+
+		return NULL
+	end if
 
 	'' strings?
 	if( (ldclass = FB_DATACLASS_STRING) or _

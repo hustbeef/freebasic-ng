@@ -131,9 +131,6 @@ extern_asm(_fb_FileTell);
 extern_asm(_fb_hFilePrintBufferWstr);
 extern_asm(_fb_WstrValULng);
 extern_asm(_fb_ErrorThrowAt);
-extern_asm(_fb_ErrorThrowAtCtx);
-extern_asm(_fb_ErrorHandlerPush);
-extern_asm(_fb_ErrorHandlerExit);
 extern_asm(___fb_utf8_trailingTb);
 extern_asm(_fb_DevFileOpenEncod);
 extern_asm(_fb_isr_set);
@@ -452,7 +449,6 @@ extern_asm(_fb_PrintUsingWstr);
 extern_asm(_fb_WriteByte);
 extern_asm(_fb_hShell);
 extern_asm(_fb_ErrorThrowEx);
-extern_asm(_fb_ErrorThrowExCtx);
 extern_asm(___fb_hDrvIntHandler_OldIRQs);
 extern_asm(_fb_DevErrOpen);
 extern_asm(_fb_FileClose);
@@ -1022,9 +1018,6 @@ DXE_EXPORT_TABLE (libfb_symbol_table)
     DXE_EXPORT_ASM (_fb_hFilePrintBufferWstr)
     DXE_EXPORT_ASM (_fb_WstrValULng)
     DXE_EXPORT_ASM (_fb_ErrorThrowAt)
-    DXE_EXPORT_ASM (_fb_ErrorThrowAtCtx)
-    DXE_EXPORT_ASM (_fb_ErrorHandlerPush)
-    DXE_EXPORT_ASM (_fb_ErrorHandlerExit)
     DXE_EXPORT_ASM (___fb_utf8_trailingTb)
     DXE_EXPORT_ASM (_fb_DevFileOpenEncod)
     DXE_EXPORT_ASM (_fb_isr_set)
@@ -1343,7 +1336,6 @@ DXE_EXPORT_TABLE (libfb_symbol_table)
     DXE_EXPORT_ASM (_fb_WriteByte)
     DXE_EXPORT_ASM (_fb_hShell)
     DXE_EXPORT_ASM (_fb_ErrorThrowEx)
-    DXE_EXPORT_ASM (_fb_ErrorThrowExCtx)
     DXE_EXPORT_ASM (___fb_hDrvIntHandler_OldIRQs)
     DXE_EXPORT_ASM (_fb_DevErrOpen)
     DXE_EXPORT_ASM (_fb_FileClose)

@@ -100,6 +100,7 @@ type ASTNODE_ as ASTNODE
 type AST_TMPSTRLIST_ITEM
 	sym             as FBSYMBOL ptr
 	srctree         as ASTNODE_ ptr
+	src_len         as longint
 	prev            as AST_TMPSTRLIST_ITEM ptr
 end type
 
@@ -590,6 +591,7 @@ declare function astRemoveNoConvCAST( byval n as ASTNODE ptr ) as ASTNODE ptr
 declare function astSkipCASTs( byval n as ASTNODE ptr ) as ASTNODE ptr
 declare function astRemoveCASTs( byval n as ASTNODE ptr ) as ASTNODE ptr
 
+
 declare function astNewBOP _
 	( _
 		byval op as integer, _
@@ -983,6 +985,11 @@ declare function astGetStrLitSymbol _
 		byval n as ASTNODE ptr _
 	) as FBSYMBOL ptr
 
+declare function astReportIfNotWritableDestination _
+	( _
+		byval n as ASTNODE ptr _
+	) as integer
+
 declare function astTypeIniBegin _
 	( _
 		byval dtype as integer, _
@@ -1124,6 +1131,7 @@ declare function astGetInverseLogOp _
 	) as integer
 
 declare function astGetEffectiveNode( byval n as ASTNODE ptr ) as ASTNODE ptr
+declare function astGetResultTempSym( byval n as ASTNODE ptr ) as FBSYMBOL ptr
 declare function astGetEffectiveClass( byval n as ASTNODE ptr ) as integer
 declare function astRebuildWithoutEffectivePart( byval n as ASTNODE ptr ) as ASTNODE ptr
 declare function astCanTakeAddrOf( byval n as ASTNODE ptr ) as integer
@@ -1160,6 +1168,7 @@ declare function astBuildFakeWstringAssign _
 		byval expr as ASTNODE ptr, _
 		byval options as integer = 0 _
 	) as ASTNODE ptr
+
 
 declare function astBuildDerefAddrOf overload _
 	( _

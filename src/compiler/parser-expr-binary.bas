@@ -318,7 +318,8 @@ function cRelExpression _
 
 		lexSkipToken( )
 
-		'' IsExpression
+		'' The RHS producer carries its own representation/type. Relational parsing
+		'' must not select wide-string storage through contextual side effects.
 		expr = cIsExpression(  )
 		if( expr = NULL ) then
 			errReport( FB_ERRMSG_EXPECTEDEXPRESSION )

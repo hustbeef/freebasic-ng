@@ -466,7 +466,7 @@ function astNewCONV _
 	end if
 
 	select case as const typeGet( to_dtype )
-	case FB_DATATYPE_VOID, FB_DATATYPE_STRING, FB_DATATYPE_FIXSTR, _
+	case FB_DATATYPE_VOID, FB_DATATYPE_STRING, FB_DATATYPE_WSTRING, FB_DATATYPE_FIXSTR, _
 		FB_DATATYPE_CHAR, FB_DATATYPE_WCHAR
 		'' refuse void (used by uop/bop to cast to be most precise
 		'' possible) and strings, as op overloading already failed
@@ -521,11 +521,9 @@ function astNewCONV _
 
 	'' string?
 	if( options and AST_CONVOPT_CHECKSTR ) then
-		select case as const typeGet( ldtype )
-		case FB_DATATYPE_STRING, FB_DATATYPE_FIXSTR, _
-			FB_DATATYPE_CHAR, FB_DATATYPE_WCHAR
+		if( symbTypeIsStringConversionSource( ldtype ) ) then
 			return rtlStrToVal( l, to_dtype )
-		end select
+		end if
 	else
 		if( ldclass = FB_DATACLASS_STRING ) then
 			exit function

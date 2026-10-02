@@ -174,6 +174,7 @@ static __inline__ ssize_t fb_wstr_Len( const FB_WCHAR *s )
 }
 
 ssize_t fb_wstr_ConvFromA( FB_WCHAR *dst, ssize_t dst_chars, const char *src );
+ssize_t fb_wstr_ConvFromAN( FB_WCHAR *dst, ssize_t dst_chars, const char *src, ssize_t src_bytes );
 ssize_t fb_wstr_ConvToA( char *dst, ssize_t dst_chars, const FB_WCHAR *src );
 
 static __inline__ int fb_wstr_IsLower( FB_WCHAR c )

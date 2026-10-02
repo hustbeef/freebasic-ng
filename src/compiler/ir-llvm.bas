@@ -226,6 +226,7 @@ dim shared as const zstring ptr dtypeName(0 to FB_DATATYPES-1) = _
 	@"double"   , _ '' double
 	@"%FBSTRING", _ '' string
 	@"i8"       , _ '' fix-len string
+	@"%FBWSTRING", _ '' native var-len wstring
 	@"%struct.va_list", _ '' va_list - not tested, it can be different for every platform
 	NULL        , _ '' struct
 	NULL        , _ '' namespace
@@ -903,10 +904,16 @@ private function _emitBegin( ) as integer
 		_emitDBG( AST_OP_DBG_LINEINI, NULL, 0 )
 	end if
 
+	'' FBSTRING and native counted FBWSTRING descriptors.  Keep the latter
+	'' target-aware: Windows wchar is i16 while Unix-like targets use the
+	'' compiler target's remapped WCHAR type; len/size follow pointer width.
+	var wcharir = *dtypeName(typeGetRemapType(FB_DATATYPE_WCHAR))
 	if( fbIs64bit( ) ) then
 		hWriteLine( "%FBSTRING = type { i8*, i64, i64 }" )
+		hWriteLine( "%FBWSTRING = type { " + wcharir + "*, i64, i64 }" )
 	else
 		hWriteLine( "%FBSTRING = type { i8*, i32, i32 }" )
+		hWriteLine( "%FBWSTRING = type { " + wcharir + "*, i32, i32 }" )
 	end if
 
 	ctx.section = SECTION_BODY

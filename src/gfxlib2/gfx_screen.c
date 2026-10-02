@@ -188,13 +188,6 @@ static int set_mode
 	if ((flags >= 0) && (flags & DRIVER_SHAPED_WINDOW))
 		flags |= DRIVER_SHAPED_WINDOW | DRIVER_NO_FRAME | DRIVER_NO_SWITCH;
 
-#ifdef FB_NATIVE_COCOA
-    /* AppKit lifecycle cannot run on a worker.  Reject before destroying an
-     * existing screen, including a worker's SCREEN 0 request. */
-    if (!fb_hCocoaIsMainThread() && (mode != 0 || __fb_gfx))
-        return fb_ErrorSetNum(FB_RTERROR_ILLEGALFUNCTIONCALL);
-#endif
-
     release_gfx_mem();
 
 	// Lock to protect the access to __fb_ctx.hooks

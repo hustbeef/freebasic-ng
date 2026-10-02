@@ -47,3 +47,18 @@ FBCALL void fb_PrintWstr
 {
     fb_PrintWstrEx(FB_FILE_TO_HANDLE(fnum), s, mask);
 }
+
+/* Native counted WSTRING: descriptor length is authoritative. */
+FBCALL void fb_PrintDynWstr
+	(
+		int fnum,
+		const FBWSTRING *s,
+		int mask
+	)
+{
+	if( (s == NULL) || (s->data == NULL) )
+		fb_PrintVoidWstrEx( FB_FILE_TO_HANDLE(fnum), mask );
+	else
+		fb_hPrintWstrEx( FB_FILE_TO_HANDLE(fnum), s->data, s->len, mask );
+	fb_WstrDynDeleteTemp( s );
+}

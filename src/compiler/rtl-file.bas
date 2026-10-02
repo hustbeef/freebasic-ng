@@ -8,7 +8,21 @@
 #include once "lex.bi"
 #include once "rtl.bi"
 
-	dim shared as FB_RTL_PROCDEF funcdata( 0 to 71 ) = _
+private function hUdtHasNativeWstring( byval udt as FBSYMBOL ptr ) as integer
+	if( udt = NULL ) then return FALSE
+	dim as FBSYMBOL ptr fld = symbUdtGetFirstField( udt )
+	do while( fld <> NULL )
+		dim as integer fdtype = symbGetType( fld )
+		if( fdtype = FB_DATATYPE_WSTRING ) then return TRUE
+		if( (fdtype = FB_DATATYPE_STRUCT) and (typeIsPtr( symbGetFullType( fld ) ) = FALSE) ) then
+			if( hUdtHasNativeWstring( symbGetSubtype( fld ) ) ) then return TRUE
+		end if
+		fld = symbUdtGetNextField( fld )
+	loop
+	return FALSE
+end function
+
+	dim shared as FB_RTL_PROCDEF funcdata( 0 to 87 ) = _
 	{ _
 		/' function fb_FileOpen _
 			( _
@@ -347,6 +361,24 @@
 				( typeSetIsConst( FB_DATATYPE_INTEGER ), FB_PARAMMODE_BYVAL, FALSE ) _
 			} _
 		), _
+		/' function fb_FilePutDynWstr( byval fnum as const long, byval pos as const long, byref s as const wstring ) as long '/ _
+		( _
+			@FB_RTL_FILEPUTDWSTR, NULL, FB_DATATYPE_LONG, FB_FUNCMODE_FBCALL, NULL, FB_RTL_OPT_NONE, 3, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ) _
+			} _
+		), _
+		/' function fb_FilePutDynWstrLarge( byval fnum as const long, byval pos as const longint, byref s as const wstring ) as long '/ _
+		( _
+			@FB_RTL_FILEPUTDWSTRLARGE, NULL, FB_DATATYPE_LONG, FB_FUNCMODE_FBCALL, NULL, FB_RTL_OPT_NONE, 3, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_LONGINT ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ) _
+			} _
+		), _
 		/' function fb_FilePutArray _
 			( _
 				byval fnum as const long, _
@@ -375,6 +407,25 @@
 			FB_DATATYPE_LONG, FB_FUNCMODE_FBCALL, _
 			NULL, FB_RTL_OPT_NONE, _
 			3, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_LONGINT ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_VOID ), FB_PARAMMODE_BYDESC, FALSE ) _
+			} _
+		), _
+		/' native counted-WSTRING array payload PUT '/ _
+		( _
+			@FB_RTL_FILEPUTDWSTRARRAY, NULL, FB_DATATYPE_LONG, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, 3, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_VOID ), FB_PARAMMODE_BYDESC, FALSE ) _
+			} _
+		), _
+		( _
+			@FB_RTL_FILEPUTDWSTRARRAYLARGE, NULL, FB_DATATYPE_LONG, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, 3, _
 			{ _
 				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ), _
 				( typeSetIsConst( FB_DATATYPE_LONGINT ), FB_PARAMMODE_BYVAL, FALSE ), _
@@ -417,6 +468,24 @@
 				( typeSetIsConst( FB_DATATYPE_LONGINT ), FB_PARAMMODE_BYVAL, FALSE ), _
 				( FB_DATATYPE_VOID, FB_PARAMMODE_BYREF, FALSE ), _
 				( typeSetIsConst( FB_DATATYPE_UINT ), FB_PARAMMODE_BYVAL, FALSE ) _
+			} _
+		), _
+		/' function fb_FileGetDynWstr( byval fnum as const long, byval pos as const long, byref dst as wstring ) as long '/ _
+		( _
+			@FB_RTL_FILEGETDWSTR, NULL, FB_DATATYPE_LONG, FB_FUNCMODE_FBCALL, NULL, FB_RTL_OPT_NONE, 3, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( FB_DATATYPE_WSTRING, FB_PARAMMODE_BYREF, FALSE ) _
+			} _
+		), _
+		/' function fb_FileGetDynWstrLarge( byval fnum as const long, byval pos as const longint, byref dst as wstring ) as long '/ _
+		( _
+			@FB_RTL_FILEGETDWSTRLARGE, NULL, FB_DATATYPE_LONG, FB_FUNCMODE_FBCALL, NULL, FB_RTL_OPT_NONE, 3, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_LONGINT ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( FB_DATATYPE_WSTRING, FB_PARAMMODE_BYREF, FALSE ) _
 			} _
 		), _
 		/' function fb_FileGetStr _
@@ -523,6 +592,25 @@
 			FB_DATATYPE_LONG, FB_FUNCMODE_FBCALL, _
 			NULL, FB_RTL_OPT_NONE, _
 			3, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_LONGINT ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( FB_DATATYPE_VOID, FB_PARAMMODE_BYDESC, FALSE ) _
+			} _
+		), _
+		/' native counted-WSTRING array payload GET '/ _
+		( _
+			@FB_RTL_FILEGETDWSTRARRAY, NULL, FB_DATATYPE_LONG, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, 3, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( FB_DATATYPE_VOID, FB_PARAMMODE_BYDESC, FALSE ) _
+			} _
+		), _
+		( _
+			@FB_RTL_FILEGETDWSTRARRAYLARGE, NULL, FB_DATATYPE_LONG, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, 3, _
 			{ _
 				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ), _
 				( typeSetIsConst( FB_DATATYPE_LONGINT ), FB_PARAMMODE_BYVAL, FALSE ), _
@@ -655,6 +743,27 @@
 				( FB_DATATYPE_UINT, FB_PARAMMODE_BYREF, FALSE ) _
 			} _
 		), _
+		/' native counted-WSTRING scalar GET with bytes-read '/ _
+		( _
+			@FB_RTL_FILEGETDWSTRIOB, NULL, FB_DATATYPE_LONG, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, 4, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( FB_DATATYPE_WSTRING, FB_PARAMMODE_BYREF, FALSE ), _
+				( FB_DATATYPE_UINT, FB_PARAMMODE_BYREF, FALSE ) _
+			} _
+		), _
+		( _
+			@FB_RTL_FILEGETDWSTRLARGEIOB, NULL, FB_DATATYPE_LONG, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, 4, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_LONGINT ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( FB_DATATYPE_WSTRING, FB_PARAMMODE_BYREF, FALSE ), _
+				( FB_DATATYPE_UINT, FB_PARAMMODE_BYREF, FALSE ) _
+			} _
+		), _
 		/' function fb_FileGetArrayIOB _
 			( _
 				byval fnum as const long, _
@@ -686,6 +795,27 @@
 			FB_DATATYPE_LONG, FB_FUNCMODE_FBCALL, _
 			NULL, FB_RTL_OPT_NONE, _
 			4, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_LONGINT ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( FB_DATATYPE_VOID, FB_PARAMMODE_BYDESC, FALSE ), _
+				( FB_DATATYPE_UINT, FB_PARAMMODE_BYREF, FALSE ) _
+			} _
+		), _
+		/' native counted-WSTRING array GET with bytes-read '/ _
+		( _
+			@FB_RTL_FILEGETDWSTRARRAYIOB, NULL, FB_DATATYPE_LONG, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, 4, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( FB_DATATYPE_VOID, FB_PARAMMODE_BYDESC, FALSE ), _
+				( FB_DATATYPE_UINT, FB_PARAMMODE_BYREF, FALSE ) _
+			} _
+		), _
+		( _
+			@FB_RTL_FILEGETDWSTRARRAYLARGEIOB, NULL, FB_DATATYPE_LONG, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, 4, _
 			{ _
 				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ), _
 				( typeSetIsConst( FB_DATATYPE_LONGINT ), FB_PARAMMODE_BYVAL, FALSE ), _
@@ -780,6 +910,17 @@
 				( typeSetIsConst( FB_DATATYPE_INTEGER ), FB_PARAMMODE_BYVAL, FALSE ) _
 			} _
 		), _
+		/' function fb_FileLineInputDynWstr( byval fnum as const long, byref dst as wstring ) as long '/ _
+		( _
+			@FB_RTL_FILELINEINPUTDWSTR, NULL, _
+			FB_DATATYPE_LONG, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, _
+			2, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( FB_DATATYPE_WSTRING, FB_PARAMMODE_BYREF, FALSE ) _
+			} _
+		), _
 		/' function fb_LineInput _
 			( _
 				byref text as const string, _
@@ -820,6 +961,19 @@
 				( typeAddrOf( typeSetIsConst( FB_DATATYPE_WCHAR ) ), FB_PARAMMODE_BYVAL, FALSE ), _
 				( typeAddrOf( FB_DATATYPE_WCHAR ), FB_PARAMMODE_BYVAL, FALSE ), _
 				( typeSetIsConst( FB_DATATYPE_INTEGER ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ) _
+			} _
+		), _
+		/' function fb_ConsoleLineInputDynWstr( byval text as const wstring ptr, byref dst as wstring, byval addquestion as const long, byval addnewline as const long ) as long '/ _
+		( _
+			@FB_RTL_CONSOLELINEINPUTDWSTR, NULL, _
+			FB_DATATYPE_LONG, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, _
+			4, _
+			{ _
+				( typeAddrOf( typeSetIsConst( FB_DATATYPE_WCHAR ) ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( FB_DATATYPE_WSTRING, FB_PARAMMODE_BYREF, FALSE ), _
 				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ), _
 				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ) _
 			} _
@@ -993,6 +1147,16 @@
 				( typeSetIsConst( FB_DATATYPE_INTEGER ), FB_PARAMMODE_BYVAL, FALSE ) _
 			} _
 		), _
+		/' function fb_InputDynWstr( byref dst as wstring ) as long '/ _
+		( _
+			@FB_RTL_INPUTDWSTR, NULL, _
+			FB_DATATYPE_LONG, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, _
+			1, _
+			{ _
+				( FB_DATATYPE_WSTRING, FB_PARAMMODE_BYREF, FALSE ) _
+			} _
+		), _
 		/' function fb_FileLock _
 			( _
 				byval fnum as const long, _
@@ -1084,6 +1248,21 @@
 		( _
 			@FB_RTL_FILEWSTRINPUT, NULL, _
 			FB_DATATYPE_WCHAR, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, _
+			2, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_INTEGER ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, TRUE, 0 ) _
+			} _
+		), _
+		/' function fb_FileDynWstrInput _
+			( _
+				byval chars as const integer, _
+				byval fnum as const long = 0 _
+			) as wstring '/ _
+		( _
+			@FB_RTL_FILEDYNWSTRINPUT, NULL, _
+			FB_DATATYPE_WSTRING, FB_FUNCMODE_FBCALL, _
 			NULL, FB_RTL_OPT_NONE, _
 			2, _
 			{ _
@@ -1461,6 +1640,34 @@ function rtlFilePut _
 
 	''
 	dtype    = astGetDataType( src )
+
+	'' UDTs containing native counted WSTRING have no implicit portable binary
+	'' layout: reject instead of serializing descriptor pointers/metadata.
+	if( dtype = FB_DATATYPE_STRUCT ) then
+		if( hUdtHasNativeWstring( astGetSubType( src ) ) ) then
+			errReport( FB_ERRMSG_INVALIDDATATYPES )
+			return NULL
+		end if
+	end if
+
+	'' Native counted WSTRING: serialize payload only, never descriptor pointers.
+	if( dtype = FB_DATATYPE_WSTRING ) then
+		if( elements <> NULL ) then exit function
+		if( offset = NULL ) then offset = astNewCONSTi( 0 )
+		o_dtype = astGetDataType( offset )
+		if( typeGetSize( o_dtype ) = 8 ) then
+			f = PROCLOOKUP( FILEPUTDWSTRLARGE )
+		else
+			f = PROCLOOKUP( FILEPUTDWSTR )
+		end if
+		proc = astNewCALL( f )
+		if( astNewARG( proc, filenum ) = NULL ) then exit function
+		if( astNewARG( proc, offset ) = NULL ) then exit function
+		if( astNewARG( proc, src, FB_DATATYPE_WSTRING ) = NULL ) then exit function
+		if( isfunc = FALSE ) then astAdd( rtlErrorCheck( proc ) )
+		return proc
+	end if
+
 	isstring = symbIsString( dtype )
 
 	if( offset = NULL ) then
@@ -1548,9 +1755,17 @@ function rtlFilePutArray _
 
 	dim as ASTNODE ptr proc = any
 	dim as FBSYMBOL ptr f = any
-	dim as integer o_dtype = any
+	dim as integer o_dtype = any, dtype = any
 
 	function = NULL
+	dtype = astGetDataType( src )
+
+	if( dtype = FB_DATATYPE_STRUCT ) then
+		if( hUdtHasNativeWstring( astGetSubType( src ) ) ) then
+			errReport( FB_ERRMSG_INVALIDDATATYPES )
+			return NULL
+		end if
+	end if
 
 	if( offset = NULL ) then
 		offset = astNewCONSTi( 0 )
@@ -1558,10 +1773,18 @@ function rtlFilePutArray _
 	o_dtype  = astGetDataType( offset )
 
 	assert( typeGetClass( o_dtype ) = FB_DATACLASS_INTEGER )
-	if( typeGetSize( o_dtype ) = 8 ) then
-		f = PROCLOOKUP( FILEPUTARRAYLARGE )
+	if( dtype = FB_DATATYPE_WSTRING ) then
+		if( typeGetSize( o_dtype ) = 8 ) then
+			f = PROCLOOKUP( FILEPUTDWSTRARRAYLARGE )
+		else
+			f = PROCLOOKUP( FILEPUTDWSTRARRAY )
+		end if
 	else
-		f = PROCLOOKUP( FILEPUTARRAY )
+		if( typeGetSize( o_dtype ) = 8 ) then
+			f = PROCLOOKUP( FILEPUTARRAYLARGE )
+		else
+			f = PROCLOOKUP( FILEPUTARRAY )
+		end if
 	end if
 
 	proc = astNewCALL( f )
@@ -1618,6 +1841,45 @@ function rtlFileGet _
 
 	''
 	dtype = astGetDataType( dst )
+
+	'' See PUT rule above: never overwrite live descriptor metadata inside a UDT.
+	if( dtype = FB_DATATYPE_STRUCT ) then
+		if( hUdtHasNativeWstring( astGetSubType( dst ) ) ) then
+			errReport( FB_ERRMSG_INVALIDDATATYPES )
+			return NULL
+		end if
+	end if
+
+	'' Native counted WSTRING: read into its existing logical span; the
+	'' descriptor itself is never overwritten.  Pre-size with WSpace/WString.
+	if( dtype = FB_DATATYPE_WSTRING ) then
+		if( elements <> NULL ) then exit function
+		if( offset = NULL ) then offset = astNewCONSTi( 0 )
+		o_dtype = astGetDataType( offset )
+		if( iobytes ) then
+			if( typeGetSize( o_dtype ) = 8 ) then
+				f = PROCLOOKUP( FILEGETDWSTRLARGEIOB )
+			else
+				f = PROCLOOKUP( FILEGETDWSTRIOB )
+			end if
+		else
+			if( typeGetSize( o_dtype ) = 8 ) then
+				f = PROCLOOKUP( FILEGETDWSTRLARGE )
+			else
+				f = PROCLOOKUP( FILEGETDWSTR )
+			end if
+		end if
+		proc = astNewCALL( f )
+		if( astNewARG( proc, filenum ) = NULL ) then exit function
+		if( astNewARG( proc, offset ) = NULL ) then exit function
+		if( astNewARG( proc, dst, FB_DATATYPE_WSTRING ) = NULL ) then exit function
+		if( iobytes ) then
+			if( astNewARG( proc, iobytes ) = NULL ) then exit function
+		end if
+		if( isfunc = FALSE ) then astAdd( rtlErrorCheck( proc ) )
+		return proc
+	end if
+
 	isstring = symbIsString( dtype )
 	var iswstr = (dtype = FB_DATATYPE_WCHAR)
 
@@ -1746,9 +2008,17 @@ function rtlFileGetArray _
 
 	dim as ASTNODE ptr proc = any
 	dim as FBSYMBOL ptr f = any
-	dim as integer o_dtype = any, islarge = any
+	dim as integer o_dtype = any, islarge = any, dtype = any
 
 	function = NULL
+	dtype = astGetDataType( dst )
+
+	if( dtype = FB_DATATYPE_STRUCT ) then
+		if( hUdtHasNativeWstring( astGetSubType( dst ) ) ) then
+			errReport( FB_ERRMSG_INVALIDDATATYPES )
+			return NULL
+		end if
+	end if
 
 	if( offset = NULL ) then
 		offset = astNewCONSTi( 0 )
@@ -1758,17 +2028,33 @@ function rtlFileGetArray _
 	assert( typeGetClass( o_dtype ) = FB_DATACLASS_INTEGER )
 	islarge = (typeGetSize( o_dtype ) = 8)
 
-	if( iobytes ) then
-		if( islarge ) then
-			f = PROCLOOKUP( FILEGETARRAYLARGEIOB )
+	if( dtype = FB_DATATYPE_WSTRING ) then
+		if( iobytes ) then
+			if( islarge ) then
+				f = PROCLOOKUP( FILEGETDWSTRARRAYLARGEIOB )
+			else
+				f = PROCLOOKUP( FILEGETDWSTRARRAYIOB )
+			end if
 		else
-			f = PROCLOOKUP( FILEGETARRAYIOB )
+			if( islarge ) then
+				f = PROCLOOKUP( FILEGETDWSTRARRAYLARGE )
+			else
+				f = PROCLOOKUP( FILEGETDWSTRARRAY )
+			end if
 		end if
 	else
-		if( islarge ) then
-			f = PROCLOOKUP( FILEGETARRAYLARGE )
+		if( iobytes ) then
+			if( islarge ) then
+				f = PROCLOOKUP( FILEGETARRAYLARGEIOB )
+			else
+				f = PROCLOOKUP( FILEGETARRAYIOB )
+			end if
 		else
-			f = PROCLOOKUP( FILEGETARRAY )
+			if( islarge ) then
+				f = PROCLOOKUP( FILEGETARRAYLARGE )
+			else
+				f = PROCLOOKUP( FILEGETARRAY )
+			end if
 		end if
 	end if
 
@@ -1825,7 +2111,7 @@ function rtlFileStrInput _
 	function = NULL
 
 	proc = astNewCALL( iif( tk = FB_TK_WINPUT, _
-				PROCLOOKUP( FILEWSTRINPUT ), _
+				PROCLOOKUP( FILEDYNWSTRINPUT ), _
 				PROCLOOKUP( FILESTRINPUT ) ) )
 
 	'' byval bytes as integer
@@ -1838,6 +2124,8 @@ function rtlFileStrInput _
 		exit function
 	end if
 
+	'' STRING and managed WSTRING input functions both return temporary managed
+	'' results directly; the consumer owns temp-result disposal.
 	function = proc
 end function
 
@@ -2003,6 +2291,38 @@ function rtlFileLineInputWstr _
 end function
 
 '':::::
+function rtlFileLineInputDynWstr _
+	( _
+		byval isfile as integer, _
+		byval expr as ASTNODE ptr, _
+		byval dstexpr as ASTNODE ptr, _
+		byval addquestion as integer, _
+		byval addnewline as integer _
+	) as integer
+
+	dim as ASTNODE ptr proc = any
+	dim as FBSYMBOL ptr f = any
+	function = FALSE
+
+	if( isfile ) then
+		f = PROCLOOKUP( FILELINEINPUTDWSTR )
+	else
+		f = PROCLOOKUP( CONSOLELINEINPUTDWSTR )
+		if( expr = NULL ) then expr = astNewVAR( symbAllocWStrConst( "", 0 ) )
+	end if
+
+	proc = astNewCALL( f )
+	if( astNewARG( proc, expr ) = NULL ) then exit function
+	if( astNewARG( proc, dstexpr, FB_DATATYPE_WSTRING ) = NULL ) then exit function
+	if( isfile = FALSE ) then
+		if( astNewARG( proc, astNewCONSTi( addquestion ) ) = NULL ) then exit function
+		if( astNewARG( proc, astNewCONSTi( addnewline ) ) = NULL ) then exit function
+	end if
+	astAdd( proc )
+	function = TRUE
+end function
+
+'':::::
 function rtlFileInput _
 	( _
 		byval isfile as integer, _
@@ -2080,6 +2400,9 @@ function rtlFileInputGet _
 	case FB_DATATYPE_WCHAR
 		f = PROCLOOKUP( INPUTWSTR )
 		args = 2
+
+	case FB_DATATYPE_WSTRING
+		f = PROCLOOKUP( INPUTDWSTR )
 
 	case FB_DATATYPE_BOOLEAN
 		f = PROCLOOKUP( INPUTBOOL )

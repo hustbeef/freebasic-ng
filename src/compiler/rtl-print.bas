@@ -177,6 +177,18 @@
 				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ) _
 			} _
 		), _
+		/' sub fb_PrintDynWstr( byval fnum as const long = 0, byref x as const wstring, byval mask as const long ) '/ _
+		( _
+			@FB_RTL_PRINTDWSTR, NULL, _
+			FB_DATATYPE_VOID, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, _
+			3, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, TRUE, 0 ), _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ) _
+			} _
+		), _
 		/' sub fb_LPrintVoid( byval fnum as const long = 0, byval mask as const long ) '/ _
 		( _
 			@FB_RTL_LPRINTVOID, NULL, _
@@ -341,6 +353,18 @@
 			{ _
 				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, TRUE, 0 ), _
 				( typeAddrOf( typeSetIsConst( FB_DATATYPE_WCHAR ) ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ) _
+			} _
+		), _
+		/' sub fb_LPrintDynWstr( byval fnum as const long = 0, byref x as const wstring, byval mask as const long ) '/ _
+		( _
+			@FB_RTL_LPRINTDWSTR, NULL, _
+			FB_DATATYPE_VOID, FB_FUNCMODE_FBCALL, _
+			@rtlPrinter_cb, FB_RTL_OPT_NONE, _
+			3, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, TRUE, 0 ), _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ), _
 				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ) _
 			} _
 		), _
@@ -533,6 +557,18 @@
 				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ) _
 			} _
 		), _
+		/' sub fb_WriteDynWstr( byval fnum as const long = 0, byref x as const wstring, byval mask as const long ) '/ _
+		( _
+			@FB_RTL_WRITEDWSTR, NULL, _
+			FB_DATATYPE_VOID, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, _
+			3, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, TRUE, 0 ), _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ) _
+			} _
+		), _
 		/' function fb_PrintUsingInit( byref fmtstr as const string ) as long '/ _
 		( _
 			@FB_RTL_PRINTUSGINIT, NULL, _
@@ -564,6 +600,18 @@
 			{ _
 				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ), _
 				( typeAddrOf( typeSetIsConst( FB_DATATYPE_WCHAR ) ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ) _
+			} _
+		), _
+		/' function fb_PrintUsingDynWstr( byval fnum as const long, byref s as const wstring, byval mask as const long ) as long '/ _
+		( _
+			@FB_RTL_PRINTUSGDWSTR, NULL, _
+			FB_DATATYPE_LONG, FB_FUNCMODE_FBCALL, _
+			NULL, FB_RTL_OPT_NONE, _
+			3, _
+			{ _
+				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ), _
+				( typeSetIsConst( FB_DATATYPE_WSTRING ), FB_PARAMMODE_BYREF, FALSE ), _
 				( typeSetIsConst( FB_DATATYPE_LONG ), FB_PARAMMODE_BYVAL, FALSE ) _
 			} _
 		), _
@@ -719,6 +767,13 @@ function rtlPrint _
 				f = PROCLOOKUP( LPRINTWSTR )
 			else
 				f = PROCLOOKUP( PRINTWSTR )
+			end if
+
+		case FB_DATATYPE_WSTRING
+			if( islprint ) then
+				f = PROCLOOKUP( LPRINTDWSTR )
+			else
+				f = PROCLOOKUP( PRINTDWSTR )
 			end if
 
 		case FB_DATATYPE_BOOLEAN
@@ -926,6 +981,9 @@ function rtlWrite _
 		case FB_DATATYPE_WCHAR
 			f = PROCLOOKUP( WRITEWSTR )
 
+		case FB_DATATYPE_WSTRING
+			f = PROCLOOKUP( WRITEDWSTR )
+
 		case FB_DATATYPE_BOOLEAN
 			f = PROCLOOKUP( WRITEBOOL )
 
@@ -1012,6 +1070,13 @@ function rtlPrintUsingInit _
 	proc = astNewCALL( f )
 
 	'' fmtstr as string
+	'' PRINT USING's format engine consumes managed 8-bit STRING.  A managed
+	'' WSTRING therefore crosses directly to FBSTRING; do not detour through a
+	'' legacy raw-WCHAR/NUL view merely to reach the narrow managed family.
+	if( astGetDataType( usingexpr ) = FB_DATATYPE_WSTRING ) then
+		usingexpr = rtlDynWstrToA( usingexpr )
+		if( usingexpr = NULL ) then exit function
+	end if
 	if( astNewARG( proc, usingexpr ) = NULL ) then
 		exit function
 	end if
@@ -1092,6 +1157,10 @@ function rtlPrintUsing _
 
 	case FB_DATATYPE_WCHAR
 		f = PROCLOOKUP( PRINTUSGWSTR )
+
+	case FB_DATATYPE_WSTRING
+		'' Native formatter consumes descriptor.len directly, preserving embedded NUL.
+		f = PROCLOOKUP( PRINTUSGDWSTR )
 
 	case FB_DATATYPE_SINGLE
 		f = PROCLOOKUP( PRINTUSG_SNG )

@@ -157,7 +157,50 @@ private sub hCopyStringsBack( byval f as ASTNODE ptr )
 	n = f->call.strtail
 	do while( n <> NULL )
 
-		t = rtlStrAssign( n->srctree, astNewVAR( n->sym ) )
+		if( symbGetType( n->sym ) = FB_DATATYPE_WSTRING ) then
+			select case astGetDataType( n->srctree )
+			case FB_DATATYPE_STRING
+				'' Managed owner -> managed owner copy-back.  Convert width at the
+				'' owner bridge, then use STRING's normal assignment semantics.
+				t = rtlStrAssign( n->srctree, rtlDynWstrToA( astNewVAR( n->sym ) ) )
+
+			case FB_DATATYPE_WCHAR
+				'' Explicit raw WString*N boundary.
+				t = astNewCALL( PROCLOOKUP( DWSTRCOPYTOW ) )
+				if( astNewARG( t, n->srctree ) = NULL ) then
+					assert( FALSE )
+				end if
+				if( astNewARG( t, astNewCONSTi( n->src_len ) ) = NULL ) then
+					assert( FALSE )
+				end if
+				if( astNewARG( t, astNewVAR( n->sym ), FB_DATATYPE_WSTRING ) = NULL ) then
+					assert( FALSE )
+				end if
+
+			case FB_DATATYPE_FIXSTR, FB_DATATYPE_CHAR
+				'' Fixed/narrow raw storage boundary.
+				t = astNewCALL( PROCLOOKUP( DWSTRCOPYTOA ) )
+				if( astNewARG( t, n->srctree, astGetDataType( n->srctree ) ) = NULL ) then
+					assert( FALSE )
+				end if
+				if( astNewARG( t, astNewCONSTi( n->src_len ) ) = NULL ) then
+					assert( FALSE )
+				end if
+				if( astNewARG( t, astNewVAR( n->sym ), FB_DATATYPE_WSTRING ) = NULL ) then
+					assert( FALSE )
+				end if
+
+			case else
+				assert( FALSE )
+			end select
+		elseif( astGetDataType( n->srctree ) = FB_DATATYPE_WSTRING ) then
+			'' Reverse bridge: native WSTRING passed to user BYREF AS STRING.
+			'' The call operated on a temporary FBSTRING; copy any mutation back
+			'' through the counted native assignment path.
+			t = rtlDynWstrAssign( n->srctree, astNewVAR( n->sym ) )
+		else
+			t = rtlStrAssign( n->srctree, astNewVAR( n->sym ) )
+		end if
 		astLoad( t )
 		astDelNode( t )
 
@@ -426,6 +469,7 @@ sub astCloneCALL _
 
 			sc->sym = sn->sym
 			sc->srctree = astCloneTree( sn->srctree )
+			sc->src_len = sn->src_len
 			sc->prev = c->call.strtail
 
 			c->call.strtail = sc
@@ -634,11 +678,14 @@ function astIgnoreCallResult( byval n as ASTNODE ptr ) as ASTNODE ptr
 		end if
 	end if
 
-	'' Returning string/wstring? Just do fb_hStrDelTemp/fb_WstrDelete to
-	'' to delete the returned temp string, no temp var needed.
-	'' (for wstrings, a temp var couldn't be used anyways, because there's
-	'' no dynamic wstring type)
+	'' Returning a managed string? Delete the returned temporary directly.
+	'' STRING and managed WSTRING follow the same ownership rule here: the
+	'' runtime delete operation recognizes and consumes temporary descriptors.
 	select case( dtype )
+	case FB_DATATYPE_WSTRING
+		assert( symbIsReturnByref( n->sym ) = FALSE )
+		return rtlDynWstrDelete( n )
+
 	case FB_DATATYPE_STRING, FB_DATATYPE_WCHAR
 		'' This mustn't be done if returning BYREF, but in that case
 		'' we shouldn't come here, since the CALL's dtype should be

@@ -124,6 +124,36 @@ typedef struct _FBSTRING {
     ssize_t         size;    /**< Size of allocated memory block. */
 } FBSTRING;
 
+/** Native variable-length WSTRING descriptor.
+ *
+ * len is the authoritative logical length in FB_WCHAR elements.  data[len]
+ * is kept NUL-terminated for legacy API interoperability, but embedded NULs
+ * inside [0,len) are valid string data.
+ */
+typedef struct _FBWSTRING {
+    FB_WCHAR       *data;
+    ssize_t         len;
+    ssize_t         size;
+} FBWSTRING;
+
+/** Flag identifying a temporary managed WSTRING result.
+ *
+ * Keep len purely logical (unlike FBSTRING, whose temp flag lives in len).
+ * FBWSTRING stores the temp flag in size so embedded-NUL/count semantics remain
+ * untouched.  Use FB_WSTRDYN_CAPACITY() whenever the allocation capacity is
+ * inspected.
+ */
+#ifdef HOST_64BIT
+    #define FB_TEMPWSTRBIT ((long long)0x8000000000000000ll)
+#else
+    #define FB_TEMPWSTRBIT ((int)0x80000000)
+#endif
+
+#define FB_WSTRDYN_ISTEMP(s) \
+    ((s) != NULL && ((((const FBWSTRING *)(s))->size & FB_TEMPWSTRBIT) != 0))
+#define FB_WSTRDYN_CAPACITY(s) \
+    ((s) == NULL ? 0 : (ssize_t)(((const FBWSTRING *)(s))->size & ~FB_TEMPWSTRBIT))
+
 
 typedef struct _FB_STR_TMPDESC {
     FB_LISTELEM     elem;
@@ -319,6 +349,8 @@ FBCALL void         fb_StrAssignMid     ( FBSTRING *dst, ssize_t start, ssize_t 
 FBCALL FB_WCHAR    *fb_WstrAlloc        ( ssize_t chars );
 FBCALL void        *fb_WstrAssignToA_Init( void *dst, ssize_t dst_chars, FB_WCHAR *src, int fill_rem );
 FBCALL void         fb_WstrDelete       ( FB_WCHAR *str );
+FBCALL FB_WCHAR    *fb_WstrDynToWstr    ( const FBWSTRING *src );
+FBCALL FBSTRING    *fb_WstrDynToStr            ( const FBWSTRING *src );
 FBCALL FB_WCHAR    *fb_WstrAssign       ( FB_WCHAR *dst, ssize_t dst_chars, FB_WCHAR *src );
 FBCALL FB_WCHAR    *fb_WstrAssignFromA  ( FB_WCHAR *dst, ssize_t dst_chars, void *src, ssize_t src_chars );
 FBCALL void        *fb_WstrAssignToA    ( void *dst, ssize_t dst_chars, FB_WCHAR *src, int fill_rem );
@@ -327,6 +359,64 @@ FBCALL FB_WCHAR    *fb_WstrConcat 		( const FB_WCHAR *str1, const FB_WCHAR *str2
 FBCALL FB_WCHAR    *fb_WstrConcatWA     ( const FB_WCHAR *str1, const void *str2, ssize_t str2_size );
 FBCALL FB_WCHAR    *fb_WstrConcatAW     ( const void *str1, ssize_t str1_size, const FB_WCHAR *str2 );
 FBCALL FB_WCHAR    *fb_WstrConcatAssign ( FB_WCHAR *dst, ssize_t dst_chars, const FB_WCHAR *src );
+
+/* Managed backing store for source-level bare WSTRING.
+ * FBWSTRING mirrors FBSTRING ownership semantics; raw WSTRING * N / WSTRING PTR
+ * remain the separate NUL-terminated WCHAR compatibility family. */
+FBCALL void         fb_WstrDynDelete            ( FBWSTRING *dst );
+FBCALL FBWSTRING   *fb_hWstrDynAllocTempDesc  ( void );
+FBCALL void         fb_WstrDynDeleteTemp        ( const FBWSTRING *src );
+FBCALL void         fb_WstrDynInit              ( FBWSTRING *dst, const FBWSTRING *src );
+FBCALL void         fb_WstrDynInitW             ( FBWSTRING *dst, const FB_WCHAR *src );
+FBCALL void         fb_WstrDynInitWN            ( FBWSTRING *dst, const FB_WCHAR *src, ssize_t src_len );
+FBCALL void         fb_WstrDynInitA             ( FBWSTRING *dst, void *src, ssize_t src_size );
+FBCALL void         fb_WstrDynMoveInit          ( FBWSTRING *dst, FBWSTRING *src );
+FBCALL void         fb_WstrDynMoveAssign        ( FBWSTRING *dst, FBWSTRING *src );
+FBCALL void         fb_WstrDynConcatAssignPair  ( FBWSTRING *dst, const FBWSTRING *lhs, const FBWSTRING *rhs );
+FBCALL void         fb_WstrDynConcatInitPair    ( FBWSTRING *dst, const FBWSTRING *lhs, const FBWSTRING *rhs );
+       void         fb_WstrDynArrayDtor         ( void *this_ );
+FBCALL void         fb_WstrDynAssign            ( FBWSTRING *dst, const FBWSTRING *src );
+FBCALL void         fb_WstrDynAssignW           ( FBWSTRING *dst, const FB_WCHAR *src );
+FBCALL void         fb_WstrDynCopyToW           ( FB_WCHAR *dst, ssize_t dst_chars, const FBWSTRING *src );
+FBCALL void         fb_WstrDynCopyToA           ( void *dst, ssize_t dst_size, const FBWSTRING *src );
+FBCALL void         fb_WstrDynAssignWN          ( FBWSTRING *dst, const FB_WCHAR *src, ssize_t src_len );
+FBCALL void         fb_WstrDynAssignA           ( FBWSTRING *dst, void *src, ssize_t src_size );
+FBCALL ssize_t      fb_WstrDynLen               ( const FBWSTRING *src );
+FBCALL void         fb_WstrDynConcatAssign      ( FBWSTRING *dst, const FBWSTRING *src );
+FBCALL void         fb_WstrDynConcatAssignW     ( FBWSTRING *dst, const FB_WCHAR *src );
+FBCALL void         fb_WstrDynConcatAssignWN    ( FBWSTRING *dst, const FB_WCHAR *src, ssize_t src_len );
+FBCALL void         fb_WstrDynConcatAssignA     ( FBWSTRING *dst, void *src, ssize_t src_size );
+FBCALL unsigned int fb_WstrDynAsc               ( const FBWSTRING *src, ssize_t pos );
+FBCALL int          fb_WstrDynCompare           ( const FBWSTRING *str1, const FBWSTRING *str2 );
+FBCALL ssize_t      fb_WstrDynInstr             ( ssize_t start, const FBWSTRING *src, const FBWSTRING *patt );
+FBCALL ssize_t      fb_WstrDynInstrAny          ( ssize_t start, const FBWSTRING *src, const FBWSTRING *patt );
+FBCALL ssize_t      fb_WstrDynInstrRev          ( const FBWSTRING *src, const FBWSTRING *patt, ssize_t start );
+FBCALL ssize_t      fb_WstrDynInstrRevAny       ( const FBWSTRING *src, const FBWSTRING *patt, ssize_t start );
+FBCALL void         fb_WstrDynAssignMid         ( FBWSTRING *dst, ssize_t start, ssize_t len, const FBWSTRING *src );
+FBCALL void         fb_WstrDynMid               ( FBWSTRING *dst, const FBWSTRING *src, ssize_t start, ssize_t len );
+FBCALL void         fb_WstrDynCase              ( FBWSTRING *dst, const FBWSTRING *src, int mode, int to_lower );
+FBCALL void         fb_WstrDynTrimSimple        ( FBWSTRING *dst, const FBWSTRING *src, int side );
+FBCALL void         fb_WstrDynTrimPattern       ( FBWSTRING *dst, const FBWSTRING *src, const FBWSTRING *patt, int side, int is_any );
+FBCALL void         fb_WstrDynFill              ( FBWSTRING *dst, ssize_t chars, unsigned int c );
+FBCALL void         fb_WstrDynFillWstr          ( FBWSTRING *dst, ssize_t chars, const FBWSTRING *src );
+FBCALL FBWSTRING  *fb_WstrDynMidResult         ( const FBWSTRING *src, ssize_t start, ssize_t len );
+FBCALL FBWSTRING  *fb_WstrDynCaseResult        ( const FBWSTRING *src, int mode, int to_lower );
+FBCALL FBWSTRING  *fb_WstrDynTrimSimpleResult  ( const FBWSTRING *src, int side );
+FBCALL FBWSTRING  *fb_WstrDynTrimPatternResult ( const FBWSTRING *src, const FBWSTRING *patt, int side, int is_any );
+FBCALL FBWSTRING  *fb_WstrDynFillResult        ( ssize_t chars, unsigned int c );
+FBCALL FBWSTRING  *fb_WstrDynFillWstrResult    ( ssize_t chars, const FBWSTRING *src );
+void                fb_WstrDynChr               ( FBWSTRING *dst, int args, ... );
+FBCALL FBWSTRING  *fb_WstrDynChrResult         ( int args, ... );
+FBCALL FBWSTRING   *fb_WstrDynAllocTempResult   ( FBWSTRING *src );
+FBCALL FBWSTRING   *fb_WstrDynLeftResult       ( const FBWSTRING *src, ssize_t chars );
+FBCALL FBWSTRING   *fb_WstrDynRightResult      ( const FBWSTRING *src, ssize_t chars );
+FBCALL void         fb_WstrDynLRSet            ( FBWSTRING *dst, const FBWSTRING *src, int is_rset );
+FBCALL double       fb_WstrDynVal              ( const FBWSTRING *src );
+FBCALL char         fb_WstrDynValBool          ( const FBWSTRING *src );
+FBCALL int          fb_WstrDynValInt           ( const FBWSTRING *src );
+FBCALL unsigned int fb_WstrDynValUInt          ( const FBWSTRING *src );
+FBCALL long long    fb_WstrDynValLng           ( const FBWSTRING *src );
+FBCALL unsigned long long fb_WstrDynValULng    ( const FBWSTRING *src );
 
 FBCALL ssize_t      fb_WstrLen          ( FB_WCHAR *str );
 FBCALL int          fb_WstrCompare      ( const FB_WCHAR *str1, const FB_WCHAR *str2 );

@@ -841,11 +841,14 @@ function symbGetVarHasCtor( byval s as FBSYMBOL ptr ) as integer
 		return FALSE
 	end if
 
-	select case( symbGetType( s ) )
-	'' var-len string?
-	case FB_DATATYPE_STRING
+	'' Managed STRING and dynamic bare WSTRING share automatic-variable
+	'' construction/destruction ownership.  Keep that policy in the shared
+	'' managed-owner classifier instead of maintaining a local dtype pair.
+	if( symbTypeIsManagedStringOwner( symbGetType( s ) ) ) then
 		return TRUE
+	end if
 
+	select case( symbGetType( s ) )
 	'' wchar ptr marked as "dynamic wstring"?
 	case typeAddrOf( FB_DATATYPE_WCHAR )
 		if( symbGetIsTemporary( s ) ) then
@@ -880,11 +883,14 @@ function symbGetVarHasDtor( byval s as FBSYMBOL ptr ) as integer
 		return FALSE
 	end if
 
-	select case( symbGetType( s ) )
-	'' var-len string?
-	case FB_DATATYPE_STRING
+	'' Managed STRING and dynamic bare WSTRING share automatic-variable
+	'' construction/destruction ownership.  Keep that policy in the shared
+	'' managed-owner classifier instead of maintaining a local dtype pair.
+	if( symbTypeIsManagedStringOwner( symbGetType( s ) ) ) then
 		return TRUE
+	end if
 
+	select case( symbGetType( s ) )
 	'' wchar ptr marked as "dynamic wstring"?
 	case typeAddrOf( FB_DATATYPE_WCHAR )
 		if( symbGetIsTemporary(s) ) then

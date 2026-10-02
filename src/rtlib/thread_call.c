@@ -41,6 +41,7 @@ typedef struct _FBTHREADCALL
 	int           num_args;
 	ffi_type    **ffi_arg_types;
 	void        **values;
+	FBWSTRING   **owned_wstrs;
 } FBTHREADCALL;
 
 /* mirrored in compiler/rtl.bi */
@@ -58,7 +59,8 @@ enum {
 	FB_THREADCALL_FLOAT32,
 	FB_THREADCALL_FLOAT64,
 	FB_THREADCALL_STRUCT,
-	FB_THREADCALL_PTR
+	FB_THREADCALL_PTR,
+	FB_THREADCALL_DYNWSTRING
 };
 
 static void freeStruct( ffi_type *arg )
@@ -84,7 +86,7 @@ static void freeStruct( ffi_type *arg )
     free( arg );
 }
 
-static ffi_type *getArgument( va_list *args_list );
+static ffi_type *getArgument( va_list *args_list, int *arg_type_out );
 
 static ffi_type *getStruct( va_list *args_list )
 {
@@ -103,7 +105,7 @@ static ffi_type *getStruct( va_list *args_list )
     /* scan elements */
     for( i=0; i<num_elems; i++ )
     {
-        ffi_arg->elements[i] = getArgument( args_list );
+        ffi_arg->elements[i] = getArgument( args_list, NULL );
         if( ffi_arg->elements[i] == NULL )
         {
             /* error, free memory and return NULL */
@@ -121,9 +123,11 @@ static ffi_type *getStruct( va_list *args_list )
     return ffi_arg;
 }
 
-static ffi_type *getArgument( va_list *args_list )
+static ffi_type *getArgument( va_list *args_list, int *arg_type_out )
 {
     int arg_type = va_arg( (*args_list), int );
+    if( arg_type_out != NULL )
+        *arg_type_out = arg_type;
     switch( arg_type )
     {
         case FB_THREADCALL_INT8:    return &ffi_type_sint8;
@@ -136,11 +140,34 @@ static ffi_type *getArgument( va_list *args_list )
         case FB_THREADCALL_UINT64:  return &ffi_type_uint64;
         case FB_THREADCALL_FLOAT32: return &ffi_type_float;
         case FB_THREADCALL_FLOAT64: return &ffi_type_double;
-        case FB_THREADCALL_STRUCT:  return getStruct( args_list );
-        case FB_THREADCALL_PTR:     return &ffi_type_pointer;
+        case FB_THREADCALL_STRUCT:     return getStruct( args_list );
+        case FB_THREADCALL_PTR:        return &ffi_type_pointer;
+        case FB_THREADCALL_DYNWSTRING: return &ffi_type_pointer;
         default:
             return NULL;
     }
+}
+
+static void freeArguments( int count, ffi_type **ffi_args, void **values, FBWSTRING **owned_wstrs )
+{
+    int i;
+
+    for( i=0; i<count; i++ )
+    {
+        if( owned_wstrs != NULL && owned_wstrs[i] != NULL )
+        {
+            fb_WstrDynDelete( owned_wstrs[i] );
+            free( owned_wstrs[i] );
+            free( values[i] );
+        }
+
+        if( ffi_args[i]->type == FFI_TYPE_STRUCT )
+            freeStruct( ffi_args[i] );
+    }
+
+    free( owned_wstrs );
+    free( values );
+    free( ffi_args );
 }
 
 static FBCALL void threadproc( void *param );
@@ -149,45 +176,103 @@ FBTHREAD *fb_ThreadCall( void *proc, int abi, ssize_t stack_size, int num_args, 
 {
     ffi_type     **ffi_args;
     void         **values;
+    FBWSTRING    **owned_wstrs;
     FBTHREADCALL  *param;
-    int i, j;
-    
+    FBTHREAD      *thread;
+    int i;
+
     /* initialize lists and arrays */
     ffi_args = (ffi_type **)malloc( sizeof( ffi_type * ) * num_args );
     values = (void **)malloc( sizeof( void * ) * num_args );
-    va_list args_list; 
+    owned_wstrs = (FBWSTRING **)calloc( num_args, sizeof( FBWSTRING * ) );
+    if( num_args > 0 && (ffi_args == NULL || values == NULL || owned_wstrs == NULL) )
+    {
+        free( owned_wstrs );
+        free( values );
+        free( ffi_args );
+        return NULL;
+    }
+
+    va_list args_list;
     va_start(args_list, num_args);
-    
+
     /* scan arguments and values from var_args */
     for( i=0; i<num_args; i++ )
     {
-        ffi_args[i] = getArgument( &args_list );
+        int arg_type = -1;
+        void *value;
+
+        ffi_args[i] = getArgument( &args_list, &arg_type );
         if( ffi_args[i] == NULL )
         {
-            /* error, free all memory allocated up to this point */
-            for( j=0; j<i; j++ )
-            {
-                if( ffi_args[j]->type == FFI_TYPE_STRUCT )
-                    freeStruct( ffi_args[j] );
-            }
-            free(values);
-            free(ffi_args);
+            va_end( args_list );
+            freeArguments( i, ffi_args, values, owned_wstrs );
             return NULL;
         }
-        values[i] = va_arg( args_list, void * );
+
+        value = va_arg( args_list, void * );
+        if( arg_type == FB_THREADCALL_DYNWSTRING )
+        {
+            FBWSTRING *src;
+            FBWSTRING *owned;
+            FBWSTRING **slot;
+
+            /* The compiler passes the address of a descriptor pointer.  The
+               descriptor may be an expression-lifetime temporary, so copy it
+               synchronously before fb_ThreadCall() returns. */
+            if( value == NULL || *(FBWSTRING **)value == NULL )
+            {
+                va_end( args_list );
+                freeArguments( i, ffi_args, values, owned_wstrs );
+                return NULL;
+            }
+
+            src = *(FBWSTRING **)value;
+            owned = (FBWSTRING *)calloc( 1, sizeof( FBWSTRING ) );
+            slot = (FBWSTRING **)malloc( sizeof( FBWSTRING * ) );
+            if( owned == NULL || slot == NULL )
+            {
+                free( slot );
+                free( owned );
+                va_end( args_list );
+                freeArguments( i, ffi_args, values, owned_wstrs );
+                return NULL;
+            }
+
+            fb_WstrDynAssign( owned, src );
+            *slot = owned;
+            values[i] = slot;
+            owned_wstrs[i] = owned;
+        }
+        else
+        {
+            values[i] = value;
+        }
     }
     va_end( args_list );
-    
+
     /* pack into thread parameter */
-    param = malloc( sizeof( FBTHREADCALL ) );
+    param = (FBTHREADCALL *)malloc( sizeof( FBTHREADCALL ) );
+    if( param == NULL )
+    {
+        freeArguments( num_args, ffi_args, values, owned_wstrs );
+        return NULL;
+    }
     param->proc = proc;
     param->abi = abi;
     param->num_args = num_args;
     param->ffi_arg_types = ffi_args;
     param->values = values;
-    
+    param->owned_wstrs = owned_wstrs;
+
     /* actually start thread */
-    return fb_ThreadCreate( threadproc, (void *)param, stack_size );
+    thread = fb_ThreadCreate( threadproc, (void *)param, stack_size );
+    if( thread == NULL )
+    {
+        freeArguments( num_args, ffi_args, values, owned_wstrs );
+        free( param );
+    }
+    return thread;
 }
 
 static FBCALL void threadproc( void *param )
@@ -196,7 +281,6 @@ static FBCALL void threadproc( void *param )
     ffi_status status = FFI_OK;
     ffi_abi abi = -1;
     ffi_cif cif;
-    int i;
 
 #ifdef HOST_X86_64
     abi = FFI_DEFAULT_ABI;
@@ -228,13 +312,7 @@ static FBCALL void threadproc( void *param )
     
 
     /* free memory and exit */
-    for( i=0; i<info->num_args; i++ )
-    {
-        if( info->ffi_arg_types[i]->type == FFI_TYPE_STRUCT )
-            freeStruct( info->ffi_arg_types[i] );
-    }
-    free( info->values );
-    free( info->ffi_arg_types );
+    freeArguments( info->num_args, info->ffi_arg_types, info->values, info->owned_wstrs );
     free( info );
 }
 

@@ -186,7 +186,6 @@ enum
 	BUILTIN_D2L           = (1 shl 4)
 	BUILTIN_D2UL          = (1 shl 5)
 	BUILTIN_STATICASSERT  = (1 shl 6)
-	BUILTIN_ONERROR_OPTNONE = (1 shl 7)
 end enum
 
 type IRHLCCTX
@@ -259,6 +258,7 @@ dim shared as const zstring ptr dtypeName(0 to FB_DATATYPES-1) = _
 	@"double"   , _ '' double
 	@"FBSTRING" , _ '' string
 	NULL        , _ '' fix-len string
+	@"FBWSTRING", _ '' native var-len wstring
 	@"__builtin_va_list"  , _ '' va_list
 	NULL        , _ '' struct
 	NULL        , _ '' namespace
@@ -457,41 +457,6 @@ private sub hAppendCtorAttrib _
 	end if
 end sub
 
-'' C defines automatic variables changed after setjmp() as indeterminate
-'' following longjmp().  An ON ERROR handler needs their FreeBASIC values,
-'' therefore prevent the C compiler from promoting those locals into registers.
-private sub hAppendOnErrorAttrib _
-	( _
-		byref ln as string, _
-		byval proc as FBSYMBOL ptr _
-	)
-
-	dim as integer section = any
-
-	if( proc->proc.ext = NULL ) then
-		exit sub
-	end if
-	if( proc->proc.ext->err.ctx = NULL ) then
-		exit sub
-	end if
-
-	if( (ctx.usedbuiltins and BUILTIN_ONERROR_OPTNONE) = 0 ) then
-		ctx.usedbuiltins or= BUILTIN_ONERROR_OPTNONE
-
-		section = sectionGosub( 0 )
-		hWriteLine( "#if defined(__clang__)", TRUE )
-		hWriteLine( "#define __FB_ONERROR_OPTNONE __attribute__((optnone))", TRUE )
-		hWriteLine( "#elif defined(__GNUC__)", TRUE )
-		hWriteLine( "#define __FB_ONERROR_OPTNONE __attribute__((optimize(""O0""), noinline, noclone))", TRUE )
-		hWriteLine( "#else", TRUE )
-		hWriteLine( "#define __FB_ONERROR_OPTNONE", TRUE )
-		hWriteLine( "#endif", TRUE )
-		sectionReturn( section )
-	end if
-
-	ln += "__FB_ONERROR_OPTNONE "
-end sub
-
 '' Helper function to add underscore prefix or @N stdcall suffix to mangled
 '' procedure names (because symb-mangling doesn't do it for -gen gcc), for use
 '' in inline ASM and such.
@@ -582,9 +547,6 @@ private function hEmitProcHeader _
 	if( options = 0 ) then
 		'' ctor/dtor flags on bodies
 		hAppendCtorAttrib( ln, proc, TRUE )
-	end if
-	if( (options and EMITPROC_ISPROCPTR) = 0 ) then
-		hAppendOnErrorAttrib( ln, proc )
 	end if
 
 	if( (options and EMITPROC_ISPROCPTR) = 0 ) then
@@ -1374,8 +1336,10 @@ private function _emitBegin( ) as integer
 	hWriteLine( "typedef unsigned long long uint64;", TRUE )
 	if( fbIs64bit( ) ) then
 		hWriteLine( "typedef struct { char *data; int64 len; int64 size; } FBSTRING;", TRUE )
+		hWriteLine( "typedef struct { " + *dtypeName(typeGetRemapType(FB_DATATYPE_WCHAR)) + " *data; int64 len; int64 size; } FBWSTRING;", TRUE )
 	else
 		hWriteLine( "typedef struct { char *data; int32 len; int32 size; } FBSTRING;", TRUE )
+		hWriteLine( "typedef struct { " + *dtypeName(typeGetRemapType(FB_DATATYPE_WCHAR)) + " *data; int32 len; int32 size; } FBWSTRING;", TRUE )
 	end if
 	hWriteLine( "typedef int8 boolean;", TRUE )
 
@@ -1529,7 +1493,10 @@ private sub _scopeEnd( byval s as FBSYMBOL ptr )
 end sub
 
 private function hIsStaticWithDtor( byval sym as FBSYMBOL ptr ) as integer
-	function = symbIsStatic( sym ) and (not symbIsRef( sym )) and symbHasDtor( sym )
+	'' The C backend must hoist local statics whose cleanup wrapper references
+	'' them. Native counted WSTRING has an RTL dtor rather than a UDT dtor.
+	function = symbIsStatic( sym ) and (not symbIsRef( sym )) and _
+	           (symbHasDtor( sym ) or (symbGetType( sym ) = FB_DATATYPE_WSTRING))
 end function
 
 private sub _procAllocStaticVars( byval sym as FBSYMBOL ptr )
@@ -4051,12 +4018,16 @@ private sub _emitProcBegin _
 	hWriteLine( "{" )
 	sectionIndent( )
 
-	'' Note: clang rejects a computed goto in a function that takes no label
-	'' address, so the error path always emits the resume labels for this
-	'' backend; see hEmitResumeLabels() in rtl-error.bas.  A single unused
-	'' label must not be used for that: it is then the only destination the
-	'' computed goto can have, and both clang and gcc turn the jump into a
-	'' direct branch to it, which makes ON ERROR GOTO loop forever.
+	if( (env.clopt.backend = FB_BACKEND_CLANG) and (env.clopt.errorcheck = TRUE) ) then
+		'' Compiling with -e
+		'' Work around an error clang unnecessarily throws if a function
+		'' contains a computed goto but no address-of-label operator.
+		'' See https://bugs.llvm.org/show_bug.cgi?id=18658
+		'' (TODO: We emit computed gotos for RESUME/ON ERROR GOTO
+		'' support (-ex) but also unnecessarily use them to terminate
+		'' the program after fb_ErrorThrowAt when compiled only with -e)
+		hWriteLine( "_unusedlabel: ; void *_llvmbug18658 = &&_unusedlabel;" )
+	end if
 end sub
 
 private sub _emitProcEnd _

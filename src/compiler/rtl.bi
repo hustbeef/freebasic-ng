@@ -98,6 +98,46 @@
 #define FB_RTL_WSTRCOMPARE              "fb_WstrCompare"
 #define FB_RTL_WSTRCONCATASSIGN         "fb_WstrConcatAssign"
 
+#define FB_RTL_DWSTRDELETE              "fb_WstrDynDelete"
+#define FB_RTL_DWSTRARRAYDTOR           "fb_WstrDynArrayDtor"
+#define FB_RTL_DWSTRASSIGN              "fb_WstrDynAssign"
+#define FB_RTL_DWSTRINIT                "fb_WstrDynInit"
+#define FB_RTL_DWSTRINITW               "fb_WstrDynInitW"
+#define FB_RTL_DWSTRINITWN              "fb_WstrDynInitWN"
+#define FB_RTL_DWSTRINITA               "fb_WstrDynInitA"
+#define FB_RTL_DWSTRMOVEINIT            "fb_WstrDynMoveInit"
+#define FB_RTL_DWSTRMOVEASSIGN          "fb_WstrDynMoveAssign"
+#define FB_RTL_DWSTRCATPAIR             "fb_WstrDynConcatAssignPair"
+#define FB_RTL_DWSTRCATINITPAIR         "fb_WstrDynConcatInitPair"
+#define FB_RTL_DWSTRASSIGNW             "fb_WstrDynAssignW"
+#define FB_RTL_DWSTRCOPYTOW             "fb_WstrDynCopyToW"
+#define FB_RTL_DWSTRCOPYTOA             "fb_WstrDynCopyToA"
+#define FB_RTL_DWSTRASSIGNWN            "fb_WstrDynAssignWN"
+#define FB_RTL_DWSTRASSIGNA             "fb_WstrDynAssignA"
+#define FB_RTL_DWSTRLEN                 "fb_WstrDynLen"
+#define FB_RTL_DWSTRTOWSTR              "fb_WstrDynToWstr"
+#define FB_RTL_DWSTRTOSTR               "fb_WstrDynToStr"
+#define FB_RTL_DWSTRCAT                 "fb_WstrDynConcatAssign"
+#define FB_RTL_DWSTRCATW                "fb_WstrDynConcatAssignW"
+#define FB_RTL_DWSTRCATWN               "fb_WstrDynConcatAssignWN"
+#define FB_RTL_DWSTRCATA                "fb_WstrDynConcatAssignA"
+#define FB_RTL_DWSTRASC                 "fb_WstrDynAsc"
+#define FB_RTL_DWSTRCOMPARE             "fb_WstrDynCompare"
+#define FB_RTL_DWSTRINSTR               "fb_WstrDynInstr"
+#define FB_RTL_DWSTRINSTRANY            "fb_WstrDynInstrAny"
+#define FB_RTL_DWSTRINSTRREV            "fb_WstrDynInstrRev"
+#define FB_RTL_DWSTRINSTRREVANY         "fb_WstrDynInstrRevAny"
+#define FB_RTL_DWSTRMIDASSIGN           "fb_WstrDynAssignMid"
+#define FB_RTL_DWSTRMID                 "fb_WstrDynMidResult"
+#define FB_RTL_DWSTRCASE                "fb_WstrDynCaseResult"
+#define FB_RTL_DWSTRTRIMSIMPLE          "fb_WstrDynTrimSimpleResult"
+#define FB_RTL_DWSTRTRIMPATTERN         "fb_WstrDynTrimPatternResult"
+#define FB_RTL_DWSTRLRSET               "fb_WstrDynLRSet"
+#define FB_RTL_DWSTRFILL                "fb_WstrDynFillResult"
+#define FB_RTL_DWSTRFILLWSTR            "fb_WstrDynFillWstrResult"
+#define FB_RTL_DWSTRCHR                 "fb_WstrDynChrResult"
+#define FB_RTL_DWSTRTEMPRESULT          "fb_WstrDynAllocTempResult"
+
 #define FB_RTL_BOOL2WSTR                "fb_BoolToWstr"
 #define FB_RTL_INT2WSTR                 "fb_IntToWstr"
 #define FB_RTL_UINT2WSTR                "fb_UIntToWstr"
@@ -174,6 +214,7 @@
 #define FB_RTL_DATARESTORE              "fb_DataRestore"
 #define FB_RTL_DATAREADSTR              "fb_DataReadStr"
 #define FB_RTL_DATAREADWSTR             "fb_DataReadWstr"
+#define FB_RTL_DATAREADDYNWSTR          "fb_DataReadDynWstr"
 #define FB_RTL_DATAREADBOOL             "fb_DataReadBool"
 #define FB_RTL_DATAREADBYTE             "fb_DataReadByte"
 #define FB_RTL_DATAREADSHORT            "fb_DataReadShort"
@@ -202,6 +243,7 @@
 #define FB_RTL_PRINTDOUBLE              "fb_PrintDouble"
 #define FB_RTL_PRINTSTR                 "fb_PrintString"
 #define FB_RTL_PRINTWSTR                "fb_PrintWstr"
+#define FB_RTL_PRINTDWSTR               "fb_PrintDynWstr"
 
 #define FB_RTL_LPRINTVOID               "fb_LPrintVoid"
 #define FB_RTL_LPRINTBOOL               "fb_LPrintBool"
@@ -217,6 +259,7 @@
 #define FB_RTL_LPRINTDOUBLE             "fb_LPrintDouble"
 #define FB_RTL_LPRINTSTR                "fb_LPrintString"
 #define FB_RTL_LPRINTWSTR               "fb_LPrintWstr"
+#define FB_RTL_LPRINTDWSTR              "fb_LPrintDynWstr"
 
 #define FB_RTL_PRINTSPC                 "fb_PrintSPC"
 #define FB_RTL_PRINTTAB                 "fb_PrintTab"
@@ -235,10 +278,12 @@
 #define FB_RTL_WRITEDOUBLE              "fb_WriteDouble"
 #define FB_RTL_WRITESTR                 "fb_WriteString"
 #define FB_RTL_WRITEWSTR                "fb_WriteWstr"
+#define FB_RTL_WRITEDWSTR               "fb_WriteDynWstr"
 
 #define FB_RTL_PRINTUSGINIT             "fb_PrintUsingInit"
 #define FB_RTL_PRINTUSGSTR              "fb_PrintUsingStr"
 #define FB_RTL_PRINTUSGWSTR             "fb_PrintUsingWstr"
+#define FB_RTL_PRINTUSGDWSTR            "fb_PrintUsingDynWstr"
 #define FB_RTL_PRINTUSG_SNG             "fb_PrintUsingSingle"
 #define FB_RTL_PRINTUSG_DBL             "fb_PrintUsingDouble"
 #define FB_RTL_PRINTUSG_LL              "fb_PrintUsingLongint"
@@ -276,8 +321,12 @@
 #define FB_RTL_FILEPUTSTRLARGE          "fb_FilePutStrLarge"
 #define FB_RTL_FILEPUTWSTR              "fb_FilePutWstr"
 #define FB_RTL_FILEPUTWSTRLARGE         "fb_FilePutWstrLarge"
+#define FB_RTL_FILEPUTDWSTR             "fb_FilePutDynWstr"
+#define FB_RTL_FILEPUTDWSTRLARGE        "fb_FilePutDynWstrLarge"
 #define FB_RTL_FILEPUTARRAY             "fb_FilePutArray"
 #define FB_RTL_FILEPUTARRAYLARGE        "fb_FilePutArrayLarge"
+#define FB_RTL_FILEPUTDWSTRARRAY        "fb_FilePutDynWstrArray"
+#define FB_RTL_FILEPUTDWSTRARRAYLARGE   "fb_FilePutDynWstrArrayLarge"
 
 #define FB_RTL_FILEGET                  "fb_FileGet"
 #define FB_RTL_FILEGETLARGE             "fb_FileGetLarge"
@@ -285,8 +334,14 @@
 #define FB_RTL_FILEGETSTRLARGE          "fb_FileGetStrLarge"
 #define FB_RTL_FILEGETWSTR              "fb_FileGetWstr"
 #define FB_RTL_FILEGETWSTRLARGE         "fb_FileGetWstrLarge"
+#define FB_RTL_FILEGETDWSTR             "fb_FileGetDynWstr"
+#define FB_RTL_FILEGETDWSTRLARGE        "fb_FileGetDynWstrLarge"
+#define FB_RTL_FILEGETDWSTRIOB          "fb_FileGetDynWstrIOB"
+#define FB_RTL_FILEGETDWSTRLARGEIOB     "fb_FileGetDynWstrLargeIOB"
 #define FB_RTL_FILEGETARRAY             "fb_FileGetArray"
 #define FB_RTL_FILEGETARRAYLARGE        "fb_FileGetArrayLarge"
+#define FB_RTL_FILEGETDWSTRARRAY        "fb_FileGetDynWstrArray"
+#define FB_RTL_FILEGETDWSTRARRAYLARGE   "fb_FileGetDynWstrArrayLarge"
 
 #define FB_RTL_FILEGETIOB               "fb_FileGetIOB"
 #define FB_RTL_FILEGETLARGEIOB          "fb_FileGetLargeIOB"
@@ -296,6 +351,8 @@
 #define FB_RTL_FILEGETWSTRLARGEIOB      "fb_FileGetWstrLargeIOB"
 #define FB_RTL_FILEGETARRAYIOB          "fb_FileGetArrayIOB"
 #define FB_RTL_FILEGETARRAYLARGEIOB     "fb_FileGetArrayLargeIOB"
+#define FB_RTL_FILEGETDWSTRARRAYIOB     "fb_FileGetDynWstrArrayIOB"
+#define FB_RTL_FILEGETDWSTRARRAYLARGEIOB "fb_FileGetDynWstrArrayLargeIOB"
 
 #define FB_RTL_FILETELL                 "fb_FileTell"
 #define FB_RTL_FILESEEK                 "fb_FileSeek"
@@ -303,10 +360,13 @@
 
 #define FB_RTL_FILESTRINPUT             "fb_FileStrInput"
 #define FB_RTL_FILEWSTRINPUT            "fb_FileWstrInput"
+#define FB_RTL_FILEDYNWSTRINPUT         "fb_FileDynWstrInput"
 #define FB_RTL_FILELINEINPUT            "fb_FileLineInput"
 #define FB_RTL_FILELINEINPUTWSTR        "fb_FileLineInputWstr"
+#define FB_RTL_FILELINEINPUTDWSTR       "fb_FileLineInputDynWstr"
 #define FB_RTL_CONSOLELINEINPUT         "fb_LineInput"
 #define FB_RTL_CONSOLELINEINPUTWSTR     "fb_LineInputWstr"
+#define FB_RTL_CONSOLELINEINPUTDWSTR    "fb_ConsoleLineInputDynWstr"
 
 #define FB_RTL_FILEINPUT                "fb_FileInput"
 #define FB_RTL_CONSOLEINPUT             "fb_ConsoleInput"
@@ -323,6 +383,7 @@
 #define FB_RTL_INPUTDOUBLE              "fb_InputDouble"
 #define FB_RTL_INPUTSTR                 "fb_InputString"
 #define FB_RTL_INPUTWSTR                "fb_InputWstr"
+#define FB_RTL_INPUTDWSTR               "fb_InputDynWstr"
 
 #define FB_RTL_FILELOCK                 "fb_FileLock"
 #define FB_RTL_FILELOCKLARGE            "fb_FileLockLarge"
@@ -334,11 +395,9 @@
 #define FB_RTL_WIDTHDEV                 "fb_WidthDev"
 #define FB_RTL_WIDTHFILE                "fb_WidthFile"
 
-#define FB_RTL_ERRORTHROW               "fb_ErrorThrowAtCtx"
-#define FB_RTL_ERRORTHROWEX             "fb_ErrorThrowExCtx"
+#define FB_RTL_ERRORTHROW               "fb_ErrorThrowAt"
+#define FB_RTL_ERRORTHROWEX             "fb_ErrorThrowEx"
 #define FB_RTL_ERRORSETHANDLER          "fb_ErrorSetHandler"
-#define FB_RTL_ERRORHANDLERPUSH          "fb_ErrorHandlerPush"
-#define FB_RTL_ERRORHANDLEREXIT          "fb_ErrorHandlerExit"
 #define FB_RTL_ERRORGETNUM              "fb_ErrorGetNum"
 #define FB_RTL_ERRORSETNUM              "fb_ErrorSetNum"
 #define FB_RTL_ERRORRESUME              "fb_ErrorResume"
@@ -524,6 +583,46 @@ enum FB_RTL_IDX
 	FB_RTL_IDX_WSTRCOMPARE
 	FB_RTL_IDX_WSTRCONCATASSIGN
 
+	FB_RTL_IDX_DWSTRDELETE
+	FB_RTL_IDX_DWSTRARRAYDTOR
+	FB_RTL_IDX_DWSTRASSIGN
+	FB_RTL_IDX_DWSTRINIT
+	FB_RTL_IDX_DWSTRINITW
+	FB_RTL_IDX_DWSTRINITWN
+	FB_RTL_IDX_DWSTRINITA
+	FB_RTL_IDX_DWSTRMOVEINIT
+	FB_RTL_IDX_DWSTRMOVEASSIGN
+	FB_RTL_IDX_DWSTRCATPAIR
+	FB_RTL_IDX_DWSTRCATINITPAIR
+	FB_RTL_IDX_DWSTRASSIGNW
+	FB_RTL_IDX_DWSTRCOPYTOW
+	FB_RTL_IDX_DWSTRCOPYTOA
+	FB_RTL_IDX_DWSTRASSIGNWN
+	FB_RTL_IDX_DWSTRASSIGNA
+	FB_RTL_IDX_DWSTRLEN
+	FB_RTL_IDX_DWSTRTOWSTR
+	FB_RTL_IDX_DWSTRTOSTR
+	FB_RTL_IDX_DWSTRCAT
+	FB_RTL_IDX_DWSTRCATW
+	FB_RTL_IDX_DWSTRCATWN
+	FB_RTL_IDX_DWSTRCATA
+	FB_RTL_IDX_DWSTRASC
+	FB_RTL_IDX_DWSTRCOMPARE
+	FB_RTL_IDX_DWSTRINSTR
+	FB_RTL_IDX_DWSTRINSTRANY
+	FB_RTL_IDX_DWSTRINSTRREV
+	FB_RTL_IDX_DWSTRINSTRREVANY
+	FB_RTL_IDX_DWSTRMIDASSIGN
+	FB_RTL_IDX_DWSTRMID
+	FB_RTL_IDX_DWSTRCASE
+	FB_RTL_IDX_DWSTRTRIMSIMPLE
+	FB_RTL_IDX_DWSTRTRIMPATTERN
+	FB_RTL_IDX_DWSTRLRSET
+	FB_RTL_IDX_DWSTRFILL
+	FB_RTL_IDX_DWSTRFILLWSTR
+	FB_RTL_IDX_DWSTRCHR
+	FB_RTL_IDX_DWSTRTEMPRESULT
+
 	FB_RTL_IDX_BOOL2WSTR
 	FB_RTL_IDX_INT2WSTR
 	FB_RTL_IDX_UINT2WSTR
@@ -600,6 +699,7 @@ enum FB_RTL_IDX
 	FB_RTL_IDX_DATARESTORE
 	FB_RTL_IDX_DATAREADSTR
 	FB_RTL_IDX_DATAREADWSTR
+	FB_RTL_IDX_DATAREADDYNWSTR
 	FB_RTL_IDX_DATAREADBOOL
 	FB_RTL_IDX_DATAREADBYTE
 	FB_RTL_IDX_DATAREADSHORT
@@ -628,6 +728,7 @@ enum FB_RTL_IDX
 	FB_RTL_IDX_PRINTDOUBLE
 	FB_RTL_IDX_PRINTSTR
 	FB_RTL_IDX_PRINTWSTR
+	FB_RTL_IDX_PRINTDWSTR
 
 	FB_RTL_IDX_LPRINTVOID
 	FB_RTL_IDX_LPRINTBOOL
@@ -643,6 +744,7 @@ enum FB_RTL_IDX
 	FB_RTL_IDX_LPRINTDOUBLE
 	FB_RTL_IDX_LPRINTSTR
 	FB_RTL_IDX_LPRINTWSTR
+	FB_RTL_IDX_LPRINTDWSTR
 
 	FB_RTL_IDX_PRINTSPC
 	FB_RTL_IDX_PRINTTAB
@@ -661,10 +763,12 @@ enum FB_RTL_IDX
 	FB_RTL_IDX_WRITEDOUBLE
 	FB_RTL_IDX_WRITESTR
 	FB_RTL_IDX_WRITEWSTR
+	FB_RTL_IDX_WRITEDWSTR
 
 	FB_RTL_IDX_PRINTUSGINIT
 	FB_RTL_IDX_PRINTUSGSTR
 	FB_RTL_IDX_PRINTUSGWSTR
+	FB_RTL_IDX_PRINTUSGDWSTR
 	FB_RTL_IDX_PRINTUSG_SNG
 	FB_RTL_IDX_PRINTUSG_DBL
 	FB_RTL_IDX_PRINTUSG_LL
@@ -705,8 +809,12 @@ enum FB_RTL_IDX
 	FB_RTL_IDX_FILEPUTSTRLARGE
 	FB_RTL_IDX_FILEPUTWSTR
 	FB_RTL_IDX_FILEPUTWSTRLARGE
+	FB_RTL_IDX_FILEPUTDWSTR
+	FB_RTL_IDX_FILEPUTDWSTRLARGE
 	FB_RTL_IDX_FILEPUTARRAY
 	FB_RTL_IDX_FILEPUTARRAYLARGE
+	FB_RTL_IDX_FILEPUTDWSTRARRAY
+	FB_RTL_IDX_FILEPUTDWSTRARRAYLARGE
 
 	FB_RTL_IDX_FILEGET
 	FB_RTL_IDX_FILEGETLARGE
@@ -714,8 +822,12 @@ enum FB_RTL_IDX
 	FB_RTL_IDX_FILEGETSTRLARGE
 	FB_RTL_IDX_FILEGETWSTR
 	FB_RTL_IDX_FILEGETWSTRLARGE
+	FB_RTL_IDX_FILEGETDWSTR
+	FB_RTL_IDX_FILEGETDWSTRLARGE
 	FB_RTL_IDX_FILEGETARRAY
 	FB_RTL_IDX_FILEGETARRAYLARGE
+	FB_RTL_IDX_FILEGETDWSTRARRAY
+	FB_RTL_IDX_FILEGETDWSTRARRAYLARGE
 
 	FB_RTL_IDX_FILEGETIOB
 	FB_RTL_IDX_FILEGETLARGEIOB
@@ -723,8 +835,12 @@ enum FB_RTL_IDX
 	FB_RTL_IDX_FILEGETSTRLARGEIOB
 	FB_RTL_IDX_FILEGETWSTRIOB
 	FB_RTL_IDX_FILEGETWSTRLARGEIOB
+	FB_RTL_IDX_FILEGETDWSTRIOB
+	FB_RTL_IDX_FILEGETDWSTRLARGEIOB
 	FB_RTL_IDX_FILEGETARRAYIOB
 	FB_RTL_IDX_FILEGETARRAYLARGEIOB
+	FB_RTL_IDX_FILEGETDWSTRARRAYIOB
+	FB_RTL_IDX_FILEGETDWSTRARRAYLARGEIOB
 
 	FB_RTL_IDX_FILETELL
 	FB_RTL_IDX_FILESEEK
@@ -732,10 +848,13 @@ enum FB_RTL_IDX
 
 	FB_RTL_IDX_FILESTRINPUT
 	FB_RTL_IDX_FILEWSTRINPUT
+	FB_RTL_IDX_FILEDYNWSTRINPUT
 	FB_RTL_IDX_FILELINEINPUT
 	FB_RTL_IDX_FILELINEINPUTWSTR
+	FB_RTL_IDX_FILELINEINPUTDWSTR
 	FB_RTL_IDX_CONSOLELINEINPUT
 	FB_RTL_IDX_CONSOLELINEINPUTWSTR
+	FB_RTL_IDX_CONSOLELINEINPUTDWSTR
 
 	FB_RTL_IDX_FILEINPUT
 	FB_RTL_IDX_CONSOLEINPUT
@@ -752,6 +871,7 @@ enum FB_RTL_IDX
 	FB_RTL_IDX_INPUTDOUBLE
 	FB_RTL_IDX_INPUTSTR
 	FB_RTL_IDX_INPUTWSTR
+	FB_RTL_IDX_INPUTDWSTR
 
 	FB_RTL_IDX_FILELOCK
 	FB_RTL_IDX_FILELOCKLARGE
@@ -766,8 +886,6 @@ enum FB_RTL_IDX
 	FB_RTL_IDX_ERRORTHROW
 	FB_RTL_IDX_ERRORTHROWEX
 	FB_RTL_IDX_ERRORSETHANDLER
-	FB_RTL_IDX_ERRORHANDLERPUSH
-	FB_RTL_IDX_ERRORHANDLEREXIT
 	FB_RTL_IDX_ERRORGETNUM
 	FB_RTL_IDX_ERRORSETNUM
 	FB_RTL_IDX_ERRORRESUME
@@ -893,6 +1011,7 @@ enum
 	FB_THREADCALL_FLOAT64
 	FB_THREADCALL_STRUCT
 	FB_THREADCALL_PTR
+	FB_THREADCALL_DYNWSTRING
 end enum
 
 type FB_RTL_PARAMDEF
@@ -981,6 +1100,30 @@ declare function rtlStrAssign _
 		byval is_ini as integer = FALSE _
 	) as ASTNODE ptr
 
+declare function rtlDynWstrAssign _
+	( _
+		byval dst as ASTNODE ptr, _
+		byval src as ASTNODE ptr, _
+		byval src_len_override as longint = -2, _
+		byval is_ini as integer = FALSE _
+	) as ASTNODE ptr
+declare function rtlDynWstrInit( byval dst as ASTNODE ptr, byval src as ASTNODE ptr ) as ASTNODE ptr
+declare function rtlDynWstrMoveInit( byval dst as ASTNODE ptr, byval src as ASTNODE ptr ) as ASTNODE ptr
+declare function rtlDynWstrMoveAssign( byval dst as ASTNODE ptr, byval src as ASTNODE ptr ) as ASTNODE ptr
+declare function rtlDynWstrConcatAssignPair( byval dst as ASTNODE ptr, byval lhs as ASTNODE ptr, byval rhs as ASTNODE ptr ) as ASTNODE ptr
+declare function rtlDynWstrConcatInitPair( byval dst as ASTNODE ptr, byval lhs as ASTNODE ptr, byval rhs as ASTNODE ptr ) as ASTNODE ptr
+declare function rtlDynWstrDelete( byval expr as ASTNODE ptr ) as ASTNODE ptr
+declare function rtlDynWstrLen( byval expr as ASTNODE ptr ) as ASTNODE ptr
+declare function rtlDynWstrToA( byval expr as ASTNODE ptr ) as ASTNODE ptr
+declare function rtlDynWstrConcatAssign( byval dst as ASTNODE ptr, byval src as ASTNODE ptr ) as ASTNODE ptr
+declare function rtlDynWstrConcat( byval lhs as ASTNODE ptr, byval rhs as ASTNODE ptr ) as ASTNODE ptr
+declare function rtlDynWstrFromExpr( byval src as ASTNODE ptr ) as ASTNODE ptr
+declare function rtlDynWstrAsc( byval expr as ASTNODE ptr, byval posexpr as ASTNODE ptr ) as ASTNODE ptr
+declare function rtlDynWstrCompare( byval lhs as ASTNODE ptr, byval rhs as ASTNODE ptr ) as ASTNODE ptr
+declare function rtlDynWstrFill( byval chars as ASTNODE ptr, byval c as ASTNODE ptr ) as ASTNODE ptr
+declare function rtlDynWstrChr( byval args as integer, exprtb() as ASTNODE ptr ) as ASTNODE ptr
+declare function rtlDynWstrAllocTempResult( byval expr as ASTNODE ptr ) as ASTNODE ptr
+
 declare function rtlWstrAssign _
 	( _
 		byval dst as ASTNODE ptr, _
@@ -1024,7 +1167,7 @@ declare function rtlToStr _
 		byval pad as integer _
 	) as ASTNODE ptr
 
-declare function rtlToWstr _
+declare function rtlWstrRawBoundary _
 	( _
 		byval expr as ASTNODE ptr _
 	) as ASTNODE ptr
@@ -1507,6 +1650,15 @@ declare function rtlFileLineInputWstr _
 		byval addnewline as integer _
 	) as integer
 
+declare function rtlFileLineInputDynWstr _
+( _
+	byval isfile as integer, _
+	byval expr as ASTNODE ptr, _
+	byval dstexpr as ASTNODE ptr, _
+	byval addquestion as integer, _
+	byval addnewline as integer _
+) as integer
+
 declare function rtlFileInput _
 	( _
 		byval isfile as integer, _
@@ -1541,11 +1693,6 @@ declare sub rtlErrorSetHandler _
 	( _
 		byval newhandler as ASTNODE ptr, _
 		byval savecurrent as integer _
-	)
-
-declare sub rtlErrorHandlerExit _
-	( _
-		byval ctx as ASTNODE ptr _
 	)
 
 declare function rtlErrorGetNum _

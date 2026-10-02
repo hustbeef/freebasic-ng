@@ -17,18 +17,38 @@ private function hOptionalTypeAndFirstExpr _
 		byref subtype as FBSYMBOL ptr _
 	) as ASTNODE ptr
 
+
+	'' WSTRING is both a function keyword (WString(...)) and a datatype token.
+	'' In PEEK/POKE's optional type slot, bare "WString," would otherwise be
+	'' parsed late through special cases.  Route it through the generic raw-memory
+	'' slot classifier: a managed owner type is not a scalar storage slot.
+	if( (lexGetToken( ) = FB_TK_WSTRING) andalso _
+	    (lexGetLookAhead( 1 ) = CHAR_COMMA) ) then
+		errReport( FB_ERRMSG_INVALIDDATATYPES, TRUE )
+		lexSkipToken( LEXCHECK_POST_SUFFIX )
+		hMatchCOMMA( )
+		dtype = FB_DATATYPE_UBYTE
+		subtype = NULL
+		var expr = cExpression( )
+		if( expr = NULL ) then
+			errReport( FB_ERRMSG_EXPECTEDEXPRESSION )
+			expr = astNewCONSTi( 0 )
+		end if
+		function = expr
+		exit function
+	end if
+
 	var expr = cTypeOrExpression( FB_TK_SIZEOF, dtype, subtype )
 	if( expr = NULL ) then
 		'' SymbolType
 
 		'' check for types invalid for PEEK/POKE
-		select case( dtype )
-		case FB_DATATYPE_VOID, FB_DATATYPE_FIXSTR
+		if( symbTypeCanBeRawMemorySlot( dtype, subtype ) = FALSE ) then
 			errReport( FB_ERRMSG_INVALIDDATATYPES, TRUE )
 			'' error recovery: fake a type
 			dtype = FB_DATATYPE_UBYTE
 			subtype = NULL
-		end select
+		end if
 
 		'' ','
 		hMatchCOMMA( )

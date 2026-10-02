@@ -23,6 +23,8 @@ type FBCASECTX
 	op          as integer
 	expr1       as ASTNODE ptr
 	expr2       as ASTNODE ptr
+	dtor1       as ASTNODE ptr
+	dtor2       as ASTNODE ptr
 end type
 
 type FBCTX
@@ -84,7 +86,7 @@ sub cSelectStmtBegin( )
 		errReport( FB_ERRMSG_RECLEVELTOODEEP )
 	end if
 
-	'' Expression
+	'' Expression representation is determined by the producer/type system.
 	expr = cExpression( )
 	if( expr = NULL ) then
 		errReport( FB_ERRMSG_EXPECTEDEXPRESSION )
@@ -111,14 +113,17 @@ sub cSelectStmtBegin( )
 
 	var effectiveexpr = astGetEffectiveNode( expr )
 	if( astIsVAR( effectiveexpr ) ) then
-		'' No need to copy to a temp var when the expression is just
-		'' a var already (note: might be type-casted, so better use
-		'' the AST node's type, not the symbol's)
 		sym = astGetSymbol( effectiveexpr )
-		assert( sym )
-		assert( symbIsTemp( sym ) = FALSE )
+	end if
+	if( (sym <> NULL) andalso (symbIsTemp( sym ) = FALSE) ) then
+		'' No need to copy to a temp var when the expression is a real
+		'' user/implicit variable already.  A native WSTRING expression may
+		'' expose a compiler temporary as its effective node; that temporary
+		'' is owned by the AST dtor list and must be copied into SELECT's
+		'' outer-scope variable before the dtor list is flushed.
 		astAdd( astRebuildWithoutEffectivePart( expr ) )
 	else
+		sym = NULL
 		'' Store expression into a temp var
 		select case typeGet( dtype )
 		'' fixed-len or zstring? temp will be a var-len string..
@@ -143,7 +148,7 @@ sub cSelectStmtBegin( )
 			'' integers, they aren't needed since integer vars won't
 			'' be accessed anymore once a CASE body was reached,
 			'' unlike string temp vars and their fb_StrDelete().
-			if( typeGet( dtype ) <> FB_DATATYPE_STRING ) then
+			if( symbTypeIsManagedStringOwner( dtype ) = FALSE ) then
 				symbSetDontInit( sym )
 			end if
 
@@ -153,9 +158,10 @@ sub cSelectStmtBegin( )
 				astAddUnscoped( astNewDECL( sym, TRUE ) )
 				astAdd( astNewASSIGN( astNewVAR( sym ), expr ) )
 			else
+				dim as ASTNODE ptr initexpr = astNewASSIGN( astNewVAR( sym ), expr, AST_OPOPT_ISINI )
 				astAdd( astNewLINK( _
 					astNewDECL( sym, FALSE ), _
-					astNewASSIGN( astNewVAR( sym ), expr, AST_OPOPT_ISINI ), AST_LINK_RETURN_NONE ) )
+					initexpr, AST_LINK_RETURN_NONE ) )
 			end if
 		else
 			'' The wstring expression must be copied into a
@@ -206,6 +212,8 @@ private sub hCaseExpression _
 	)
 
 	casectx.op = AST_OP_EQ
+	casectx.dtor1 = NULL
+	casectx.dtor2 = NULL
 
 	'' IS REL_OP Expression
 	if( lexGetToken( ) = FB_TK_IS ) then
@@ -217,8 +225,21 @@ private sub hCaseExpression _
 		casectx.typ = FB_CASETYPE_SINGLE
 	end if
 
-	'' Expression
+	'' Expression.  If SELECT's control value is native WSTRING, preserve
+	'' counted semantics for direct WChr()/WString()/IIF CASE producers too.
+	'' Keep CASE-expression dtors in a private scope: range CASE parses both
+	'' bounds before lowering the first comparison, so leaving both bounds in
+	'' the global dtor list could destroy the upper bound before it is built.
+	dim as integer dtorcookie = 0
+	dim as integer isnativewstr = (typeGet( symbGetType( sym ) ) = FB_DATATYPE_WSTRING)
+	if( isnativewstr ) then
+		astDtorListScopeBegin( 0 )
+	end if
 	casectx.expr1 = cExpression( )
+	if( isnativewstr ) then
+		dtorcookie = astDtorListScopeEnd( )
+		casectx.dtor1 = astDtorListFlush( dtorcookie )
+	end if
 	if( casectx.expr1 = NULL ) then
 		errReport( FB_ERRMSG_EXPECTEDEXPRESSION )
 		'' error recovery: fake an expr
@@ -238,7 +259,16 @@ private sub hCaseExpression _
 			casectx.typ = FB_CASETYPE_SINGLE
 		else
 			casectx.typ = FB_CASETYPE_RANGE
+			dim as integer dtorcookie = 0
+			dim as integer isnativewstr = (typeGet( symbGetType( sym ) ) = FB_DATATYPE_WSTRING)
+			if( isnativewstr ) then
+				astDtorListScopeBegin( 0 )
+			end if
 			casectx.expr2 = cExpression( )
+			if( isnativewstr ) then
+				dtorcookie = astDtorListScopeEnd( )
+				casectx.dtor2 = astDtorListFlush( dtorcookie )
+			end if
 			if( casectx.expr2 = NULL ) then
 				errReport( FB_ERRMSG_EXPECTEDEXPRESSION )
 				'' error recovery: skip until next ',', assume single
@@ -249,6 +279,37 @@ private sub hCaseExpression _
 
 	end if
 end sub
+
+private function hBuildCaseBranch _
+	( _
+		byval expr as ASTNODE ptr, _
+		byval dtors as ASTNODE ptr, _
+		byval label as FBSYMBOL ptr, _
+		byval is_inverse as integer _
+	) as ASTNODE ptr
+
+	if( expr = NULL ) then
+		return NULL
+	end if
+
+	if( dtors = NULL ) then
+		return astBuildBranch( expr, label, is_inverse, FALSE )
+	end if
+
+	'' Materialize the comparison result before destroying any temporary used
+	'' to compute it.  This keeps destructor calls in front of the branch while
+	'' avoiding astBuildBranch() flushing unrelated/later CASE-bound dtors.
+	dim as FBSYMBOL ptr tmp = symbAddTempVar( astGetFullType( expr ), astGetSubType( expr ) )
+	dim as ASTNODE ptr tree = astBuildVarAssign( tmp, expr, AST_OPOPT_ISINI )
+	tree = astNewLINK( tree, dtors, AST_LINK_RETURN_NONE )
+	dim as ASTNODE ptr branch = astBuildBranch( astNewVAR( tmp ), label, is_inverse, FALSE )
+	if( branch = NULL ) then
+		astDelTree( tree )
+		return NULL
+	end if
+
+	function = astNewLINK( tree, branch, AST_LINK_RETURN_NONE )
+end function
 
 private function hFlushCaseExpr _
 	( _
@@ -270,15 +331,35 @@ private function hFlushCaseExpr _
 	expr = NEWCASEVAR( sym )
 
 	if( casectx.typ <> FB_CASETYPE_RANGE ) then
+		'' Build the comparison as a value first, then turn it into a branch.
+		'' This is important for native WSTRING: CASE expressions may create
+		'' descriptor temporaries, and a direct BOP-with-label branch would
+		'' jump over their dtors on the taken path.  astBuildBranch() stores
+		'' the condition result, flushes temp dtors, and only then branches.
+		'' (fork) AST_OPOPT_ALLOCRES is required by the TAC/gas backends:
+		'' without an allocated result vreg, hCMPI() would invent a
+		'' symbUniqueLabel and emit a dangling "jcc" to it.
+		expr = astNewBOP( casectx.op, expr, casectx.expr1, NULL, _
+		                  AST_OPOPT_ALLOCRES )
+		if( expr = NULL ) then
+			return FALSE
+		end if
+
 		if( islast ) then
-			expr = astNewBOP( astGetInverseLogOp( casectx.op ), expr, _
-			                  casectx.expr1, nxtlabel, AST_OPOPT_NONE )
+			'' Last alternative: continue to next CASE if this one did not match.
+			expr = hBuildCaseBranch( expr, casectx.dtor1, nxtlabel, FALSE )
 		else
-			expr = astNewBOP( casectx.op, expr, _
-			                  casectx.expr1, inilabel, AST_OPOPT_NONE )
+			'' Earlier alternative: jump into the CASE body if it matched.
+			expr = hBuildCaseBranch( expr, casectx.dtor1, inilabel, TRUE )
 		end if
 	else
-		expr = astNewBOP( AST_OP_LT, expr, casectx.expr1, nxtlabel, AST_OPOPT_NONE )
+		'' Lower bound failed? Skip this CASE.
+		expr = astNewBOP( AST_OP_GE, expr, casectx.expr1, NULL, _
+		                  AST_OPOPT_ALLOCRES )
+		if( expr = NULL ) then
+			return FALSE
+		end if
+		expr = hBuildCaseBranch( expr, casectx.dtor1, nxtlabel, FALSE )
 		if( expr = NULL ) then
 			return FALSE
 		end if
@@ -286,10 +367,15 @@ private function hFlushCaseExpr _
 		astAdd( expr )
 
 		expr = NEWCASEVAR( sym )
+		expr = astNewBOP( AST_OP_LE, expr, casectx.expr2, NULL, _
+		                  AST_OPOPT_ALLOCRES )
+		if( expr = NULL ) then
+			return FALSE
+		end if
 		if( islast ) then
-			expr = astNewBOP( AST_OP_GT, expr, casectx.expr2, nxtlabel, AST_OPOPT_NONE )
+			expr = hBuildCaseBranch( expr, casectx.dtor2, nxtlabel, FALSE )
 		else
-			expr = astNewBOP( AST_OP_LE, expr, casectx.expr2, inilabel, AST_OPOPT_NONE )
+			expr = hBuildCaseBranch( expr, casectx.dtor2, inilabel, TRUE )
 		end if
 	end if
 

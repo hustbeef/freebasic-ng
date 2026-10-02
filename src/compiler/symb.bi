@@ -44,6 +44,7 @@ enum FB_DATATYPE
 	FB_DATATYPE_DOUBLE
 	FB_DATATYPE_STRING
 	FB_DATATYPE_FIXSTR
+	FB_DATATYPE_WSTRING
 	FB_DATATYPE_VA_LIST
 	FB_DATATYPE_STRUCT
 	FB_DATATYPE_NAMESPC
@@ -73,6 +74,23 @@ const FB_DT_CONSTPOS        = FB_DT_PTRPOS + 4
 const FB_DT_MANGLEPOS       = 20
 
 const FB_OVLPROC_MINORSCALE = 10
+
+'' String classification infrastructure.  Keep storage/ownership and character
+'' width as independent axes so policy classifiers can be derived without
+'' merging narrow/wide concrete runtime behavior.
+enum FB_STRINGSTORAGECLASS
+	FB_STRINGSTORAGE_NONE
+	FB_STRINGSTORAGE_MANAGED_OWNER
+	FB_STRINGSTORAGE_FIXED_VALUE
+	FB_STRINGSTORAGE_RAW_POINTER_BOUNDARY
+end enum
+
+enum FB_STRINGWIDTH
+	FB_STRINGWIDTH_NONE
+	FB_STRINGWIDTH_NARROW
+	FB_STRINGWIDTH_WIDE
+end enum
+
 
 #define OvlMatchScore(major, minor) (((major) * FB_OVLPROC_MINORSCALE) + (minor))
 
@@ -595,7 +613,7 @@ type FB_PROCDBG
 end type
 
 type FB_PROCERR
-	ctx             as FBSYMBOL_ ptr            '' error handler jump context
+	lasthnd         as FBSYMBOL_ ptr            '' last error handler
 	lastmod         as FBSYMBOL_ ptr            '' last module name
 	lastfun         as FBSYMBOL_ ptr            '' last function name
 end type
@@ -1726,6 +1744,75 @@ declare function symbIsString _
 		byval dtype as integer _
 	) as integer
 
+'' Managed string/fixed-buffer/raw-boundary classification helpers.
+'' Keep legacy symbIsString() unchanged for historical raw-string callers;
+'' dynamic bare WSTRING is represented through these explicit predicates.
+declare function symbTypeGetStringStorageClass _
+	( _
+		byval dtype as integer _
+	) as FB_STRINGSTORAGECLASS
+
+declare function symbTypeGetStringWidth _
+	( _
+		byval dtype as integer _
+	) as FB_STRINGWIDTH
+
+declare function symbTypeIsManagedStringOwner _
+	( _
+		byval dtype as integer _
+	) as integer
+
+declare function symbTypeIsFixedStringBuffer _
+	( _
+		byval dtype as integer _
+	) as integer
+
+declare function symbTypeIsStringStorageValue _
+	( _
+		byval dtype as integer _
+	) as integer
+
+declare function symbTypeIsStringSequenceStorageValue _
+	( _
+		byval dtype as integer _
+	) as integer
+
+declare function symbTypeIsWstrRawBoundaryProducer _
+	( _
+		byval dtype as integer _
+	) as integer
+
+declare function symbTypeUsesDynamicWstrOps _
+	( _
+		byval dtype as integer _
+	) as integer
+
+declare function symbTypeUsesLegacyStrConcatOps _
+	( _
+		byval dtype as integer _
+	) as integer
+
+declare function symbTypeIsStringConversionSource _
+	( _
+		byval dtype as integer _
+	) as integer
+
+declare function symbTypeIsRawStringBoundary _
+	( _
+		byval dtype as integer _
+	) as integer
+
+declare function symbTypeIsStringLike _
+	( _
+		byval dtype as integer _
+	) as integer
+
+declare function symbTypeCanBeRawMemorySlot _
+	( _
+		byval dtype as integer, _
+		byval subtype as FBSYMBOL ptr _
+	) as integer
+
 declare function symbGetValistType( byval dtype as integer, byval subtype as FBSYMBOL ptr ) as FB_CVA_LIST_TYPEDEF
 #define symbIsValistStructArray( dtype, subtype ) (symbGetValistType( dtype, subtype ) = FB_CVA_LIST_BUILTIN_C_STD)
 #define symbIsBuiltinVaListType( dtype, subtype ) (symbGetValistType( dtype, subtype ) > FB_CVA_LIST_POINTER)
@@ -2204,6 +2291,7 @@ declare function symbCloneSimpleStruct( byval sym as FBSYMBOL ptr ) as FBSYMBOL 
 
 #define symbGetIsTemporary(s) (((s)->stats and FB_SYMBSTATS_TEMPORARY) <> 0)
 #define symbSetIsTemporary(s) (s)->stats or= FB_SYMBSTATS_TEMPORARY
+
 
 #define symbGetIsUnusedVtable(s) ((s->stats and FB_SYMBSTATS_UNUSEDVTABLE) <> 0)
 #define symbSetIsUnusedVtable(s) s->stats or= FB_SYMBSTATS_UNUSEDVTABLE

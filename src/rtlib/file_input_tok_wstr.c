@@ -89,7 +89,7 @@ static void hSkipDelimiter( FB_INPUTCTX *ctx, FB_WCHAR c )
 	}
 }
 
-void fb_FileInputNextTokenWstr( FB_WCHAR *buffer, ssize_t max_chars, int is_string )
+ssize_t fb_FileInputNextTokenWstr( FB_WCHAR *buffer, ssize_t max_chars, int is_string )
 {
 	/* max_chars does not include the null terminator, the buffer is
 	   assumed to be big enough to hold at least the null terminator */
@@ -177,4 +177,6 @@ exit:
 	/* skip comma or newline */
 	if( skipdelim )
 		hSkipDelimiter( ctx, c );
+
+	return len;
 }

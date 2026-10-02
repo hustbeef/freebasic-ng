@@ -651,6 +651,7 @@ declare sub cProcRetType _
 		byval pattrib as FB_PROCATTRIB, _
 		byval proc as FBSYMBOL ptr, _
 		byval is_proto as integer, _
+		byval op as AST_OP, _
 		byref dtype as integer, _
 		byref subtype as FBSYMBOL ptr _
 	)
@@ -914,7 +915,8 @@ declare sub hSymbolType _
 		byref subtype as FBSYMBOL ptr, _
 		byref lgt as longint, _
 		byval is_byref as integer = FALSE, _
-		byval is_extends as integer = FALSE _
+		byval is_extends as integer = FALSE, _
+		byref is_dynwstring as integer = FALSE _
 	)
 
 declare function hCheckForDefiniteTypes _

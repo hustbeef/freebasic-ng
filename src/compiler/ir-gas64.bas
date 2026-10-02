@@ -429,6 +429,7 @@ dim shared remapTB(0 to FB_DATATYPES-1) as integer = _
 12, _                                   '' double
 13, _                                   '' string
 14, _                                   '' fix-len string
+19, _                                   '' native var-len wstring descriptor
 17  _                                   '' va_list
 }
 
@@ -451,7 +452,9 @@ dim shared stabsTb(0 to ...) as const zstring ptr = _
 @"pchar:t15=*4;", _  '' used for the data ptr in the string:t13 declaration only
 @"boolean:t16=@s8;-16", _
 @"va_list:t17=-11", _
-@"wchar:t18=-30" _
+@"wchar:t18=-30", _
+@"wstring:t19=s24data:20,0,64;len:1,64,64;size:1,128,64;;", _
+@"pwchar:t20=*18;" _
 }
 
 dim shared as const zstring ptr regstrq(17)=>{@"rax",@"rbx",@"rcx",@"rdx",@"rsi",@"rdi",@"rbp",@"rsp",@"r8",@"r9",@"r10",@"r11",@"r12",@"r13",@"r14",@"r15",@"rip",@"* X_Q"}

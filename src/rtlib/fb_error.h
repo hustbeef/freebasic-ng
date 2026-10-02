@@ -24,11 +24,8 @@ typedef enum _FB_RTERROR {
 
 typedef void (*FB_ERRHANDLER) (void);
 
-typedef struct _FB_ERRORHANDLERCTX FB_ERRORHANDLERCTX;
-
 typedef struct _FB_ERRORCTX {
 	FB_ERRHANDLER handler;
-	FB_ERRORHANDLERCTX *handler_ctx;
 	int           err_num;
 	int           line_num;
 	const char   *mod_name;
@@ -48,20 +45,11 @@ FBCALL void          fb_AssertW         ( char *filename, int linenum, char *fun
 FBCALL void          fb_AssertWarnW     ( char *filename, int linenum, char *funcname, FB_WCHAR *expression );
        FB_ERRHANDLER fb_ErrorThrowMsg   ( int errnum, int linenum, const char *modname,
                                           const char *msg, void *res_label, void *resnext_label );
-       FB_ERRHANDLER fb_ErrorThrowMsgCtx( int errnum, int linenum, const char *modname,
-                                          const char *msg, void *res_label, void *resnext_label,
-                                          void **source_ctx );
        FB_ERRHANDLER fb_ErrorThrowEx    ( int errnum, int linenum, const char *fname,
                                           void *res_label, void *resnext_label );
-       FB_ERRHANDLER fb_ErrorThrowExCtx ( int errnum, int linenum, const char *fname,
-                                          void *res_label, void *resnext_label, void **source_ctx );
        FB_ERRHANDLER fb_ErrorThrowAt    ( int line_num, const char *mod_name,
                                           void *res_label, void *resnext_label );
-       FB_ERRHANDLER fb_ErrorThrowAtCtx ( int line_num, const char *mod_name,
-                                          void *res_label, void *resnext_label, void **source_ctx );
 FBCALL FB_ERRHANDLER fb_ErrorSetHandler ( FB_ERRHANDLER newhandler );
-FBCALL void         *fb_ErrorHandlerPush( void **ctx, FB_ERRHANDLER newhandler );
-FBCALL void          fb_ErrorHandlerExit( void **ctx );
 FBCALL int           fb_ErrorGetNum     ( void );
 FBCALL int           fb_ErrorSetNum     ( int errnum );
        void         *fb_ErrorResume     ( void );

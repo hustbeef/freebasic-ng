@@ -149,10 +149,17 @@ private sub cConstAssign _
 	'' string?
 	if( litsym <> NULL ) then
 		if( dtype <> FB_DATATYPE_INVALID ) then
-			'' not a string?
-			if( typeGetDtAndPtrOnly( dtype ) <> FB_DATATYPE_STRING ) then
+			'' Literal string constants are represented by CHAR/WCHAR literal
+			'' symbols, not heap-owning descriptors.  Allow an explicit
+			'' AS WSTRING annotation the same way AS STRING is accepted: the
+			'' annotation confirms a string-family constant while the literal
+			'' symbol keeps its real CHAR/WCHAR storage.
+			select case( typeGetDtAndPtrOnly( dtype ) )
+			case FB_DATATYPE_STRING, FB_DATATYPE_WSTRING
+				'' ok
+			case else
 				errReportEx( FB_ERRMSG_INVALIDDATATYPES, id )
-			end if
+			end select
 		end if
 
 		value.s = litsym

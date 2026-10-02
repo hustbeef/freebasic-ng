@@ -127,8 +127,13 @@ sub astDataStmtEnd( byval tree as ASTNODE ptr )
 			expr = astNewADDROF( expr )
 
 		case FB_DATASTMT_ID_WSTR
-			id = FB_DATASTMT_ID_WSTR + _
-			     (symbGetWstrLength( astGetStrLitSymbol( expr ) ) )
+			'' DATA descriptors need the logical unescaped WCHAR count.
+			'' symbGetWstrLength() measures escaped compiler literal storage and
+			'' is not valid for native counted WSTRING (notably \u escapes and
+			'' embedded NUL).  Preserve the exact span in the descriptor.
+			dim as integer wtextlen
+			hUnescapeW( symbGetVarLitTextW( astGetStrLitSymbol( expr ) ), wtextlen )
+			id = FB_DATASTMT_ID_WSTR + wtextlen
 			expr = astNewADDROF( expr )
 
 		case FB_DATASTMT_ID_CONST
@@ -266,21 +271,9 @@ end function
 
 private sub hCreateDataDesc( )
 	static as FBARRAYDIM dTB(0)
-	dim as integer fieldalign = any
 
-	'' Using FIELD = 1, to pack it as done by the rtlib.  Mach-O is the
-	'' exception: ld64 requires a pointer relocation to sit at a pointer-aligned
-	'' offset, and the packed layout puts the descriptor's pointer at offset 2
-	'' (and every 10 bytes after that).  That is a fatal link error on arm64, so
-	'' Darwin uses the natural layout on both sides; the runtime counterpart is
-	'' FB_DATADESC_PACKED in src/rtlib/fb_data.h.
-	if( fbGetOption( FB_COMPOPT_TARGET ) = FB_COMPTARGET_DARWIN ) then
-		fieldalign = env.pointersize
-	else
-		fieldalign = 1
-	end if
-
-	ast.data.desc = symbStructBegin( NULL, NULL, NULL, "__FB_DATADESC$", NULL, FALSE, fieldalign, FALSE, 0, 0 )
+	'' Using FIELD = 1, to pack it as done by the rtlib
+	ast.data.desc = symbStructBegin( NULL, NULL, NULL, "__FB_DATADESC$", NULL, FALSE, 1, FALSE, 0, 0 )
 
 	'' type as short
 	symbAddField( ast.data.desc, "type", 0, dTB(), _

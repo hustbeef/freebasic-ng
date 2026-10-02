@@ -3,14 +3,6 @@
 #include "fb.h"
 #include <setjmp.h>
 
-/* See error.c: fb_SetJmp uses __mingw_setjmp() on Windows ARM64, so the
-   matching MinGW non-SEH longjmp entry point is required here too. */
-#if defined(__MINGW32__) && defined(__aarch64__)
-#define fb_GosubLongJmp __mingw_longjmp
-#else
-#define fb_GosubLongJmp longjmp
-#endif
-
 /* slow but easy to manage dynamic GOSUB call-stack */
 typedef struct gosubnode {
 	jmp_buf buf;
@@ -78,7 +70,7 @@ FBCALL int fb_GosubReturn( GOSUBCTX * ctx )
 		free(ctx->top);
 		ctx->top = node;
 
-		fb_GosubLongJmp( buf, -1 );
+		longjmp( buf, -1 );
 	}
 
 	/* don't know where to go next so return an error */

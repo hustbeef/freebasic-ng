@@ -88,15 +88,26 @@ function hCheckTypes _
 		return TRUE
 	end if
 
-	'' Any wstrings?
-	lmatch = (typeGetDtOnly( ldtype ) = FB_DATATYPE_WCHAR)
-	rmatch = (typeGetDtOnly( rdtype ) = FB_DATATYPE_WCHAR)
+	'' Any wide strings? Legacy WSTRING expressions are WCHAR-typed, while
+	'' native counted WSTRING expressions carry FB_DATATYPE_WSTRING.  Keep the
+	'' historical legacy/legacy result as WCHAR, but if either branch is a native
+	'' owner then the IIF result must also be a native owner so its counted length
+	'' (including embedded NUL) survives the merge.
+	dim as integer lwdt = typeGetDtOnly( ldtype )
+	dim as integer rwdt = typeGetDtOnly( rdtype )
+	lmatch = (lwdt = FB_DATATYPE_WCHAR) or (lwdt = FB_DATATYPE_WSTRING)
+	rmatch = (rwdt = FB_DATATYPE_WCHAR) or (rwdt = FB_DATATYPE_WSTRING)
 	if( lmatch or rmatch ) then
-		'' If one is, both must be
+		'' If one is wide-string-like, both must be.  This intentionally does not
+		'' broaden the old narrow STRING/WSTRING mixing rules.
 		if( lmatch <> rmatch ) then
 			exit function
 		end if
-		dtype = FB_DATATYPE_WCHAR
+		if( (lwdt = FB_DATATYPE_WSTRING) or (rwdt = FB_DATATYPE_WSTRING) ) then
+			dtype = FB_DATATYPE_WSTRING
+		else
+			dtype = FB_DATATYPE_WCHAR
+		end if
 		subtype = NULL
 		return TRUE
 	end if
@@ -242,6 +253,7 @@ function astNewIIF _
 	dtype or= typeGetConstMask( truexpr->dtype ) or _
 	          typeGetConstMask( falsexpr->dtype )
 
+
 	falselabel = symbAddLabel( NULL )
 
 	condexpr = astBuildBranch( condexpr, falselabel, FALSE, TRUE )
@@ -294,6 +306,12 @@ function astNewIIF _
 
 		'' Register for cleanup at the end of the statement
 		astDtorListAdd( temp )
+
+		'' STRING and managed WSTRING both use initialization semantics below
+		'' (AST_OPOPT_ISINI).  fb_StrInit()/fb_WstrDynInit()/MoveInit() initialize
+		'' an uninitialized descriptor directly, so the IIF result temp must not be
+		'' pre-cleared here.  This keeps the ownership protocol symmetric and avoids
+		'' an extra descriptor memset on every managed-WSTRING IIF expression.
 
 		varexpr = astNewVAR( temp )
 

@@ -236,8 +236,8 @@ private sub hFieldInit _
 
 	'' ANY?
 	if( lexGetToken( ) = FB_TK_ANY ) then
-		'' don't allow var-len strings
-		if( symbGetType( sym ) = FB_DATATYPE_STRING ) then
+		'' don't allow managed string owners to skip descriptor initialization
+		if( symbTypeIsManagedStringOwner( symbGetType( sym ) ) ) then
 			errReport( FB_ERRMSG_INVALIDDATATYPES )
 		else
 			symbSetDontInit( sym )
@@ -1052,9 +1052,13 @@ sub cTypeDecl( byval attrib as FB_SYMBATTRIB )
 		'' is the base type a zstring, wstring, or something else (error)?
 		if( baseDType <> FB_DATATYPE_STRUCT ) then
 
-			'' allow extending WSTRING and ZSTRING, the UDT
-			'' will use different rules for conversions,
-			if (baseDType = FB_DATATYPE_WCHAR) or (baseDType = FB_DATATYPE_CHAR) then
+			'' EXTENDS WSTRING is the historical string-like UDT base role.
+			'' Ordinary bare WSTRING remains managed everywhere else.
+			if( baseDType = FB_DATATYPE_WSTRING ) then
+				stringType = FB_DATATYPE_WCHAR
+				baseDType = 0
+				assert( baseSubtype = NULL )
+			elseif( (baseDType = FB_DATATYPE_WCHAR) or (baseDType = FB_DATATYPE_CHAR) ) then
 				stringType = baseDType
 				baseDType = 0
 				assert( baseSubtype = NULL )

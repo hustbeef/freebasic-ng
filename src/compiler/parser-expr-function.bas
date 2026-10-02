@@ -6,6 +6,7 @@
 #include once "fb.bi"
 #include once "fbint.bi"
 #include once "parser.bi"
+#include once "rtl.bi"
 #include once "ast.bi"
 
 '':::::
@@ -100,6 +101,9 @@ function cFunctionCall _
 
 	'' Take care of functions returning BYREF
 	funcexpr = astBuildByrefResultDeref( funcexpr )
+
+	'' BYVAL STRING/WSTRING calls remain CALL nodes.  Their temporary-result
+	'' ownership is consumed by the managed string runtime/AST rules.
 
 	''
 	function = cStrIdxOrMemberDeref( funcexpr )

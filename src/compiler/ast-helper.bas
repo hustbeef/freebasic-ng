@@ -49,12 +49,25 @@ function astBuildFakeWstringAssign _
 	) as ASTNODE ptr
 
 	dim as ASTNODE ptr t = any
+	dim as FBSYMBOL ptr call_result_tmp = NULL
 
 	assert( symbGetIsTemporary( sym ) )
 	t = NULL
 
-	'' side-effect?
-	if( astHasSideFx( expr ) ) then
+	'' Legacy WSTRING functions are logically WCHAR expressions, but their real
+	'' ABI result is a heap WCHAR pointer.  astRemSideFx()/astMakeRef() normally
+	'' hides that pointer behind a dereference.  For fake-wstring preservation
+	'' (SELECT CASE/IIF), keep the raw result pointer explicitly so it can be
+	'' released after the value has been copied into the persistent buffer.
+	if( astIsCALL( expr ) andalso (astGetDataType( expr ) = FB_DATATYPE_WCHAR) ) then
+		astSetType( expr, typeAddrOf( FB_DATATYPE_WCHAR ), astGetSubType( expr ) )
+		call_result_tmp = symbAddTempVar( typeAddrOf( FB_DATATYPE_WCHAR ) )
+		t = astNewLINK( t, _
+		                astNewASSIGN( astNewVAR( call_result_tmp ), expr, AST_OPOPT_ISINI ), _
+		                AST_LINK_RETURN_RIGHT )
+		expr = astNewDEREF( astNewVAR( call_result_tmp ) )
+	elseif( astHasSideFx( expr ) ) then
+		'' Other side effects still use the generic materialization path.
 		t = astNewLINK( t, astRemSideFx( expr ), AST_LINK_RETURN_RIGHT )
 	end if
 
@@ -70,10 +83,19 @@ function astBuildFakeWstringAssign _
 	                astNewASSIGN( astBuildFakeWstringAccess( sym ), expr, options ), _
 	                AST_LINK_RETURN_RIGHT )
 
+	if( call_result_tmp <> NULL ) then
+		'' Preserve the assignment expression value while freeing the consumed
+		'' legacy WSTRING function-result buffer.
+		t = astNewLINK( t, _
+		                rtlStrDelete( astNewVAR( call_result_tmp ) ), _
+		                AST_LINK_RETURN_LEFT )
+	end if
+
 	function = t
 end function
 
 '':::::
+
 function astBuildVarInc _
 	( _
 		byval lhs as FBSYMBOL ptr, _
@@ -115,6 +137,8 @@ function astBuildVarDtorCall overload _
 
 	if( astGetDataType( varexpr ) = FB_DATATYPE_STRING ) then
 		function = rtlStrDelete( varexpr )
+	elseif( astGetDataType( varexpr ) = FB_DATATYPE_WSTRING ) then
+		function = rtlDynWstrDelete( varexpr )
 	elseif( typeHasDtor( varexpr->dtype, varexpr->subtype ) ) then
 		function = astBuildDtorCall( varexpr->subtype, varexpr )
 	end if
@@ -141,6 +165,9 @@ function astBuildVarDtorCall overload _
 		'' dyn string?
 		case FB_DATATYPE_STRING
 			function = rtlStrDelete( astNewVAR( s ) )
+
+		case FB_DATATYPE_WSTRING
+			function = rtlDynWstrDelete( astNewVAR( s ) )
 
 		'' wchar ptr marked as "dynamic wstring"?
 		case typeAddrOf( FB_DATATYPE_WCHAR )
@@ -499,6 +526,9 @@ function astBuildCall _
 
 	'' Take care of functions returning BYREF
 	p = astBuildByrefResultDeref( p )
+
+	'' Managed STRING/WSTRING function results stay as CALL nodes; consumers
+	'' apply the common temporary-result ownership protocol.
 
 	function = p
 end function
@@ -1086,7 +1116,14 @@ function astBuildStrPtr( byval lhs as ASTNODE ptr ) as ASTNODE ptr
 	''   access for UDTs
 	'' - making result pointer CONST too, to prevent assignments like
 	''   <STRPTR(s) = 0>
+	'' Native counted-WSTRING has the same first-field descriptor ABI as STRING,
+	'' but its data pointer is WCHAR*.  Returning that pointer intentionally
+	'' exposes NUL-terminated compatibility semantics to external APIs; callers
+	'' that need embedded NUL must pair STRPTR() with LEN().
 	dtype = FB_DATATYPE_CHAR
+	if( astGetDataType( lhs ) = FB_DATATYPE_WSTRING ) then
+		dtype = FB_DATATYPE_WCHAR
+	end if
 	if( typeIsConst( lhs->dtype ) ) then
 		dtype = typeSetIsConst( dtype )
 	end if

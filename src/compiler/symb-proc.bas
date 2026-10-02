@@ -346,9 +346,9 @@ sub symbProcRecalcRealType( byval proc as FBSYMBOL ptr )
 
 	select case( typeGetDtAndPtrOnly( dtype ) )
 	'' string?
-	case FB_DATATYPE_STRING, FB_DATATYPE_WCHAR
-		'' It's actually a pointer to a string descriptor,
-		'' or in case of wstring, a pointer to a wchar buffer.
+	case FB_DATATYPE_STRING, FB_DATATYPE_WSTRING, FB_DATATYPE_WCHAR
+		'' Managed STRING/WSTRING BYVAL results use descriptor pointers at ABI
+		'' level; legacy WCHAR/WSTRING results use a raw wchar-buffer pointer.
 		dtype = typeAddrOf( dtype )
 
 	'' UDT? follow GCC 3.x's ABI
@@ -1786,6 +1786,16 @@ end function
 		                            options or FB_SYMBFINDOPT_NO_CAST )
 
 		if( proc <> NULL ) then
+			'' A CONST-qualified UDT instance cannot invoke a non-CONST member Cast.
+			'' Filter it during overload scoring instead of selecting an unusable
+			'' candidate and failing later while building the implicit call.
+			if( typeIsConst( astGetFullType( arg_expr ) ) andalso _
+			    (symbIsConstant( proc ) = FALSE) ) then
+				proc = NULL
+			end if
+		end if
+
+		if( proc <> NULL ) then
 			'' calculate a new match score based on the CAST() return type rank
 			'' we can't keep the FB_OVLPROC_TYPEMATCH and FB_OVLPROC_HALFMATCH
 			'' level of match scores because we don't want the score to interfere
@@ -1803,8 +1813,11 @@ end function
 
 			if( match >= FB_OVLPROC_TYPEMATCH ) then
 				match = match - FB_OVLPROC_TYPEMATCH + FB_OVLPROC_CASTMATCH
-			elseif( match >= FB_OVLPROC_HALFMATCH ) then
-				match = match - FB_OVLPROC_TYPEMATCH + FB_OVLPROC_CONVMATCH
+			elseif( match > FB_OVLPROC_CASTMATCH ) then
+				'' Preserve the original HALF-tier distance when remapping it
+				'' into the lower conversion tier.  HALF-rank scores are
+				'' below FB_OVLPROC_HALFMATCH but still above CASTMATCH.
+				match = match - FB_OVLPROC_HALFMATCH + FB_OVLPROC_CONVMATCH
 			else
 				match = FB_OVLPROC_CONVMATCH - OvlMatchScore( FB_DATATYPE_STRUCT, 0 )
 			end if
@@ -1984,20 +1997,44 @@ private function hCalcTypesDiff _
 		'' (treated as strings) or w|zstring ptr (auto string to ptr conversion,
 		'' corresponding to hStrArgToStrPtrParam())
 		case FB_DATACLASS_STRING
-			select case param_dtype
-			case FB_DATATYPE_CHAR
-				'' string => zstring
-				return FB_OVLPROC_FULLMATCH - OvlMatchScore( 0, 1 )
-			case typeAddrOf( FB_DATATYPE_CHAR )
-				'' string => zstring ptr
-				return FB_OVLPROC_FULLMATCH - OvlMatchScore( 0, 2 )
-			case FB_DATATYPE_WCHAR
-				'' string => wstring
-				return FB_OVLPROC_HALFMATCH - OvlMatchScore( 0, 3 )
-			case typeAddrOf( FB_DATATYPE_WCHAR )
-				'' string => wstring ptr
-				return FB_OVLPROC_HALFMATCH - OvlMatchScore( 0, 4 )
-			end select
+			'' Managed WSTRING mirrors STRING during overload matching, but
+			'' prefers the wide raw boundary instead of the narrow one.  Keep
+			'' the existing STRING scores below unchanged.
+			if( arg_dtype = FB_DATATYPE_WSTRING ) then
+				'' Mirror STRING's overload-distance ordering without letting a raw view
+				'' outrank the managed owner.  Same-width WSTRING raw boundaries are
+				'' preferred over the cross-width WSTRING->STRING owner conversion,
+				'' while all raw adaptations stay below TYPEMATCH/exact owner matches.
+				select case param_dtype
+				case FB_DATATYPE_WCHAR
+					'' managed wstring => raw wstring boundary (same width)
+					return FB_OVLPROC_HALFMATCH
+				case typeAddrOf( FB_DATATYPE_WCHAR )
+					'' managed wstring => raw wstring ptr boundary (same width)
+					return FB_OVLPROC_HALFMATCH - OvlMatchScore( 0, 1 )
+				case FB_DATATYPE_CHAR
+					'' managed wstring => raw zstring (cross width)
+					return FB_OVLPROC_HALFMATCH - OvlMatchScore( 0, 3 )
+				case typeAddrOf( FB_DATATYPE_CHAR )
+					'' managed wstring => raw zstring ptr (cross width)
+					return FB_OVLPROC_HALFMATCH - OvlMatchScore( 0, 4 )
+				end select
+			else
+				select case param_dtype
+				case FB_DATATYPE_CHAR
+					'' string => zstring
+					return FB_OVLPROC_FULLMATCH - OvlMatchScore( 0, 1 )
+				case typeAddrOf( FB_DATATYPE_CHAR )
+					'' string => zstring ptr
+					return FB_OVLPROC_FULLMATCH - OvlMatchScore( 0, 2 )
+				case FB_DATATYPE_WCHAR
+					'' string => wstring
+					return FB_OVLPROC_HALFMATCH - OvlMatchScore( 0, 3 )
+				case typeAddrOf( FB_DATATYPE_WCHAR )
+					'' string => wstring ptr
+					return FB_OVLPROC_HALFMATCH - OvlMatchScore( 0, 4 )
+				end select
+			end if
 
 		end select
 
@@ -2028,8 +2065,31 @@ private function hCalcTypesDiff _
 	case FB_DATACLASS_STRING
 
 		select case arg_dclass
-		'' okay if it's a fixed-len string
+		'' Descriptor/native string types need explicit scoring.  Treating
+		'' every FB_DATACLASS_STRING pair as a full match makes legacy STRING
+		'' overloads tie with native counted-WSTRING overloads and lets the
+		'' wrong procedure win before parameter coercion is considered.
 		case FB_DATACLASS_STRING
+			'' Compare the underlying direct string datatype, not the full encoded
+			'' dtype.  Top-level CONST/REFERENCE/mangling bits must not make a
+			'' cross-string conversion look like a full/exact match.
+			select case typeGetDtAndPtrOnly( param_dtype )
+			case FB_DATATYPE_STRING
+				if( typeGetDtAndPtrOnly( arg_dtype ) = FB_DATATYPE_WSTRING ) then
+					'' Native counted WSTRING -> STRING is a real, length-aware
+					'' conversion. Keep it in the historical
+					'' wide->narrow HALF-match tier so an exact native-WSTRING
+					'' overload still wins.
+					return FB_OVLPROC_HALFMATCH - OvlMatchScore( 0, 2 )
+				end if
+			case FB_DATATYPE_WSTRING
+				if( typeGetDtAndPtrOnly( arg_dtype ) <> FB_DATATYPE_WSTRING ) then
+					'' STRING/FIXSTR -> native counted WSTRING is likewise a
+					'' supported conversion.  Use the historical narrow->wide
+					'' distance; exact STRING and exact WSTRING remain preferred.
+					return FB_OVLPROC_HALFMATCH - OvlMatchScore( 0, 3 )
+				end if
+			end select
 			function = FB_OVLPROC_FULLMATCH
 
 		'' integer if it's a z/wstring (no matter whether a
@@ -2037,11 +2097,25 @@ private function hCalcTypesDiff _
 		case FB_DATACLASS_INTEGER
 			select case arg_dtype
 			case FB_DATATYPE_CHAR
-				'' zstring => string
-				function = FB_OVLPROC_FULLMATCH - OvlMatchScore( 0, 2 )
+				'' zstring => STRING should keep the legacy preference.  A native
+				'' counted-WSTRING overload is still a possible conversion target,
+				'' but must score lower or ordinary ZString calls become ambiguous.
+				if( typeGetDtAndPtrOnly( param_dtype ) = FB_DATATYPE_WSTRING ) then
+					function = FB_OVLPROC_HALFMATCH - OvlMatchScore( 0, 4 )
+				else
+					function = FB_OVLPROC_FULLMATCH - OvlMatchScore( 0, 2 )
+				end if
 			case FB_DATATYPE_WCHAR
-				'' wstring => string
-				function = FB_OVLPROC_HALFMATCH - OvlMatchScore( 0, 2 )
+				'' Keep the historical wide->narrow STRING conversion at H-2, but
+				'' prefer the new native wide owner when both overloads exist. Keep
+				'' both conversions in the historical HALF-match tier. Native
+				'' wide gets only a one-minor-step preference (H-1 vs H-2), so exact
+				'' legacy WCHAR/WCHAR-ptr paths keep their established precedence.
+				if( typeGetDtAndPtrOnly( param_dtype ) = FB_DATATYPE_WSTRING ) then
+					function = FB_OVLPROC_HALFMATCH - OvlMatchScore( 0, 1 )
+				else
+					function = FB_OVLPROC_HALFMATCH - OvlMatchScore( 0, 2 )
+				end if
 			end select
 
 		end select
@@ -2120,7 +2194,8 @@ private function hCheckOvlParam _
 		'' arg being passed by value? and not a UDT?
 		'' - fall through for UDTs because they will be handled below by
 		''   trying to find a ctor / cast operation that satisfies the call
-		if( (arg_mode = FB_PARAMMODE_BYVAL) and (typeGetClass( arg_dtype ) <> FB_DATACLASS_UDT) ) then
+		if( (arg_mode = FB_PARAMMODE_BYVAL) and _
+		    (typeGetClass( arg_dtype ) <> FB_DATACLASS_UDT) ) then
 
 			'' invalid type? refuse..
 			if( (typeGetClass( arg_dtype ) <> FB_DATACLASS_INTEGER) or _
@@ -2218,7 +2293,7 @@ private function hCheckOvlParam _
 		return FB_OVLPROC_NO_MATCH
 
 	case else
-		select case arg_dtype
+		select case typeGetDtAndPtrOnly( arg_dtype )
 		'' UDT arg? try implicit casting..
 		case FB_DATATYPE_STRUCT ', FB_DATATYPE_CLASS
 			hCheckCastOvlEx( param_mode, _
@@ -2405,7 +2480,17 @@ function symbFindClosestOvlProc _
 
 			'' Same score as best previous overload?
 			elseif( matchscore = max_matchscore ) then
-				matchcount += 1
+				dim as integer eligible = TRUE
+				'' Apply the same binary-operator eligibility rule to ties.
+				'' Otherwise an all-conversion candidate can turn a single
+				'' eligible best match into a false ambiguous-call error.
+				if( options and FB_SYMBFINDOPT_BOP_OVL ) then
+					eligible = (exact_matches >= 1)
+				end if
+
+				if( eligible ) then
+					matchcount += 1
+				end if
 			end if
 		end if
 
@@ -2779,6 +2864,13 @@ function symbFindCastOvlProc _
 
 	'' find the most precise possible..
 	else
+		'' (fork) a managed-WSTRING cast is a valid "most precise" target
+		'' too: it lets relational BOPs compare owner UDTs (including
+		'' Extends WString buffer UDTs) through Cast() As WString.  It is
+		'' only used when no numeric cast exists, keeping the historical
+		'' numeric preference intact.
+		dim as FBSYMBOL ptr wstr_proc = NULL
+
 		'' for each overloaded proc..
 		proc = proc_head
 		do while( proc <> NULL )
@@ -2791,12 +2883,18 @@ function symbFindCastOvlProc _
 						closest_proc = proc
 						to_dtype = symbGetType( proc )
 					end if
+				elseif( symbGetType( proc ) = FB_DATATYPE_WSTRING ) then
+					wstr_proc = proc
 				end if
 			end if
 
 			'' next
 			proc = symbGetProcOvlNext( proc )
 		loop
+
+		if( closest_proc = NULL ) then
+			closest_proc = wstr_proc
+		end if
 
 	end if
 
@@ -3367,7 +3465,7 @@ function symbGetDefaultParamMode _
 
 	select case as const( typeGetDtAndPtrOnly( dtype ) )
 	case FB_DATATYPE_FWDREF, _
-	     FB_DATATYPE_FIXSTR, FB_DATATYPE_STRING, _
+	     FB_DATATYPE_FIXSTR, FB_DATATYPE_STRING, FB_DATATYPE_WSTRING, _
 	     FB_DATATYPE_CHAR, FB_DATATYPE_WCHAR, _
 	     FB_DATATYPE_STRUCT ', FB_DATATYPE_CLASS
 		return FB_PARAMMODE_BYREF

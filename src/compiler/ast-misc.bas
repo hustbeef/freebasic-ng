@@ -529,6 +529,32 @@ function astGetStrLitSymbol _
 
 end function
 
+'' Common write-destination guard for statements that mutate caller storage.
+'' This rejects both top-level CONST descriptors and literal-backed storage
+'' before any statement-specific rtl helper gets a chance to write through it.
+function astReportIfNotWritableDestination _
+	( _
+		byval n as ASTNODE ptr _
+	) as integer
+
+	if( n = NULL ) then
+		function = FALSE
+		exit function
+	end if
+
+	if( typeIsConst( astGetFullType( n ) ) ) then
+		errReport( FB_ERRMSG_CONSTANTCANTBECHANGED )
+		function = TRUE
+	elseif( astGetStrLitSymbol( n ) ) then
+		errReport( FB_ERRMSG_EXPECTEDIDENTIFIER, TRUE )
+		function = TRUE
+	else
+		function = FALSE
+	end if
+
+end function
+
+
 '':::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 '' checks
 '':::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -672,6 +698,32 @@ end function
 '' node type update
 '':::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
+private function hUpdDynWstrConcat( byval n as ASTNODE ptr ) as ASTNODE ptr
+	dim as ASTNODE ptr l = any, r = any
+
+	function = n
+	if( n = NULL ) then exit function
+	if( symbTypeUsesDynamicWstrOps( astGetDataType( n ) ) = FALSE ) then exit function
+
+	l = n->l
+	if( l <> NULL ) then
+		n->l = astUpdStrConcat( l )
+	end if
+	r = n->r
+	if( r <> NULL ) then
+		n->r = astUpdStrConcat( r )
+	end if
+
+	if( n->class = AST_NODECLASS_BOP ) then
+		if( n->op.op = AST_OP_ADD ) then
+			l = n->l
+			r = n->r
+			function = rtlDynWstrConcat( l, r )
+			astDelNode( n )
+		end if
+	end if
+end function
+
 function astUpdStrConcat( byval n as ASTNODE ptr ) as ASTNODE ptr
 	dim as ASTNODE ptr l = any, r = any
 
@@ -681,13 +733,16 @@ function astUpdStrConcat( byval n as ASTNODE ptr ) as ASTNODE ptr
 		exit function
 	end if
 
-	select case as const astGetDataType( n )
-	case FB_DATATYPE_STRING, FB_DATATYPE_FIXSTR, _
-		 FB_DATATYPE_WCHAR
+	'' Dynamic managed WSTRING has its own late-lowering helper.  Legacy
+	'' STRING/FIXSTR/raw-WCHAR concat lowering is selected through the shared
+	'' ARCH10 classifier instead of a local dtype table.
+	if( symbTypeUsesDynamicWstrOps( astGetDataType( n ) ) ) then
+		return hUpdDynWstrConcat( n )
+	end if
 
-	case else
+	if( symbTypeUsesLegacyStrConcatOps( astGetDataType( n ) ) = FALSE ) then
 		exit function
-	end select
+	end if
 
 	'' walk
 	l = n->l
@@ -999,17 +1054,20 @@ private function hHasDtor( byval sym as FBSYMBOL ptr ) as integer
 	'' Everything with a destructor (classes)
 	function = symbHasDtor( sym )
 
-	'' But also dynamic [w]strings
-	select case( symbGetType( sym ) )
-	case FB_DATATYPE_STRING
+	'' Managed string owners also require temporary cleanup.  Keep this tied to
+	'' the shared owner classifier so STRING/WSTRING lifetime policy cannot drift
+	'' between symbol, NEW/DELETE and AST temporary handling.
+	if( symbTypeIsManagedStringOwner( symbGetType( sym ) ) ) then
 		function = TRUE
 
-	case typeAddrOf( FB_DATATYPE_WCHAR )
+	'' Legacy SELECT CASE/fake dynamic-wstring temporaries are raw WCHAR PTR
+	'' buffers, not managed descriptor owners.  Keep their old cleanup path
+	'' separate from the managed-owner classifier.
+	elseif( symbGetType( sym ) = typeAddrOf( FB_DATATYPE_WCHAR ) ) then
 		if( symbGetIsTemporary( sym ) ) then
 			function = TRUE
 		end if
-
-	end select
+	end if
 end function
 
 #if __FB_DEBUG__
@@ -1216,8 +1274,16 @@ private sub hastDtorListRescope( byval cookie as integer, byval newcookie as int
 end sub
 
 sub astDtorListUnscope( byval cookie as integer )
-	'' Unscope dtors and emit after the expression
-	hastDtorListRescope( cookie, 0 )
+	'' If a constant-folded expression is nested inside another dtor-list
+	'' scope, its surviving temporaries belong to that parent scope.  Only
+	'' fall back to the top-level cookie 0 when there is no parent scope.
+	dim as integer newcookie = 0
+	with( ast.dtorlistscopes )
+		if( .count > 0 ) then
+			newcookie = .cookies[.count-1]
+		end if
+	end with
+	hastDtorListRescope( cookie, newcookie )
 end sub
 
 sub astDtorListScopeDelete( byval cookie as integer )

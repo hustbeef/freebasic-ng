@@ -62,8 +62,6 @@ struct _FBTHREAD {
 	HANDLE id;
 #elif defined HOST_XBOX
 	HANDLE id;
-#elif defined HOST_AMIGA
-	int id;
 #else
 #error Unexpected target
 #endif

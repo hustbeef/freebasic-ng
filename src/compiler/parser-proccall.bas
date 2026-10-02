@@ -216,6 +216,39 @@ function cMaybeIgnoreCallResult( byval expr as ASTNODE ptr ) as integer
 	end if
 end function
 
+'' Peek whether the next tokens are a compound assignment operator
+'' followed by '=' (e.g. '&=', '+=', '*='), without consuming anything.
+'' Returns the plain BOP version of the operator, or INVALID.
+private function hMatchPropCompoundAssign( ) as AST_OP
+	dim as AST_OP op = INVALID
+
+	select case as const( lexGetToken( ) )
+	case CHAR_PLUS   : op = AST_OP_ADD
+	case CHAR_MINUS  : op = AST_OP_SUB
+	case CHAR_TIMES  : op = AST_OP_MUL
+	case CHAR_SLASH  : op = AST_OP_DIV
+	case CHAR_RSLASH : op = AST_OP_INTDIV
+	case CHAR_CART   : op = AST_OP_POW
+	case CHAR_AMP    : op = AST_OP_CONCAT
+	case FB_TK_AND   : op = AST_OP_AND
+	case FB_TK_OR    : op = AST_OP_OR
+	case FB_TK_XOR   : op = AST_OP_XOR
+	case FB_TK_EQV   : op = AST_OP_EQV
+	case FB_TK_IMP   : op = AST_OP_IMP
+	case FB_TK_SHL   : op = AST_OP_SHL
+	case FB_TK_SHR   : op = AST_OP_SHR
+	case FB_TK_MOD   : op = AST_OP_MOD
+	end select
+
+	if( op <> INVALID ) then
+		if( hIsAssignToken( lexGetLookAhead( 1 ) ) = FALSE ) then
+			op = INVALID
+		end if
+	end if
+
+	function = op
+end function
+
 '':::::
 function cProcCall _
 	( _
@@ -228,6 +261,10 @@ function cProcCall _
 	) as ASTNODE ptr
 
 	dim as integer is_propset = FALSE
+	dim as integer is_indexed = FALSE
+	dim as AST_OP is_propcompound = INVALID
+	dim as AST_OP prop_bop = INVALID
+	dim as ASTNODE ptr inst_clone = NULL
 	dim as ASTNODE ptr procexpr = any
 	dim as FB_CALL_ARG_LIST arg_list = ( 0, NULL, NULL )
 
@@ -237,8 +274,6 @@ function cProcCall _
 
 	'' property?
 	if( symbIsProperty( sym ) ) then
-
-		dim as integer is_indexed = FALSE
 
 		'' '('? indexed..
 		if( lexGetToken( ) = CHAR_LPRNT ) then
@@ -268,7 +303,11 @@ function cProcCall _
 			end if
 		end if
 
-		'' '='?
+		'' '='?  (or a compound assignment like '&=' / '+='?)
+		if( hIsAssignToken( lexGetToken( ) ) = FALSE ) then
+			prop_bop = hMatchPropCompoundAssign( )
+		end if
+
 		if( hIsAssignToken( lexGetToken( ) ) ) then
 			if( is_indexed ) then
 				if( symbGetUDTHasIdxSetProp( symbGetParent( sym ) ) = FALSE ) then
@@ -286,6 +325,47 @@ function cProcCall _
 			is_propset = TRUE
 
 			'' the value arg is the lhs expression
+
+		elseif( prop_bop <> INVALID ) then
+			'' compound property assignment:  obj.prop op= rhs
+			'' lowered to  obj.prop-set( obj.prop-get() op rhs )
+			'' the get call below is evaluated exactly once
+			if( (arg_list.head = NULL) orelse astHasSideFx( arg_list.head->expr ) ) then
+				errReportEx( FB_ERRMSG_INVALIDDATATYPES, _
+				             "compound property assignment requires a side-effect free instance expression" )
+				hSkipStmt( )
+				return NULL
+			end if
+
+			'' the get call will consume the original instance expression;
+			'' keep a copy for the set call
+			inst_clone = astCloneTree( arg_list.head->expr )
+
+			lexSkipToken( )   '' the operator
+			if( hIsAssignToken( lexGetToken( ) ) = FALSE ) then
+				errReport( FB_ERRMSG_EXPECTEDEQ )
+				hSkipStmt( )
+				return NULL
+			end if
+			lexSkipToken( )   '' '='
+
+			'' the get call takes no arguments here; the RHS is parsed
+			'' after it and combined by the compound BOP below
+			options or= FB_PARSEROPT_ISPROPGET or FB_PARSEROPT_OPTONLY
+
+			if( is_indexed ) then
+				if( symbGetUDTHasIdxGetProp( symbGetParent( sym ) ) = FALSE ) then
+					errReport( FB_ERRMSG_PROPERTYHASNOIDXGETMETHOD, TRUE )
+					exit function
+				end if
+			else
+				if( symbGetUDTHasGetProp( symbGetParent( sym ) ) = FALSE ) then
+					errReport( FB_ERRMSG_PROPERTYHASNOGETMETHOD )
+					exit function
+				end if
+			end if
+
+			is_propcompound = prop_bop
 
 		else
 			options or= FB_PARSEROPT_ISPROPGET
@@ -360,6 +440,61 @@ function cProcCall _
 	end if
 
 	fbSetPrntOptional( FALSE )
+
+	'' compound property assignment?  obj.prop op= rhs
+	if( is_propcompound <> INVALID ) then
+		if( is_indexed ) then
+			errReportEx( FB_ERRMSG_INVALIDDATATYPES, _
+			             "compound assignment on indexed properties" )
+			astDelTree( procexpr )
+			hSkipStmt( )
+			return NULL
+		end if
+
+		'' rhs
+		dim as ASTNODE ptr rhs = cExpression( )
+		if( rhs = NULL ) then
+			errReport( FB_ERRMSG_EXPECTEDEXPRESSION )
+			astDelTree( procexpr )
+			hSkipStmt( )
+			return NULL
+		end if
+
+		'' set accessor required
+		if( symbGetUDTHasSetProp( symbGetParent( sym ) ) = FALSE ) then
+			errReport( FB_ERRMSG_PROPERTYHASNOSETMETHOD )
+			astDelTree( procexpr )
+			astDelTree( rhs )
+			return NULL
+		end if
+
+		'' value = obj.prop-get() op rhs - the get call was built above
+		'' and is evaluated exactly once, as the BOP's left operand
+		dim as ASTNODE ptr value = astNewBOP( is_propcompound, procexpr, rhs )
+		if( value = NULL ) then
+			errReport( FB_ERRMSG_TYPEMISMATCH )
+			astDelTree( procexpr )
+			astDelTree( rhs )
+			return NULL
+		end if
+
+		'' obj.prop-set( value )
+		dim as FB_CALL_ARG_LIST set_args = ( 0, NULL, NULL )
+		dim as FB_PARSEROPT set_opts = options and not (FB_PARSEROPT_ISPROPGET or FB_PARSEROPT_OPTONLY)
+		hMethodCallAddInstPtrOvlArg( sym, inst_clone, @set_args, @set_opts )
+
+		dim as FB_CALL_ARG ptr set_arg = symbAllocOvlCallArg( @parser.ovlarglist, @set_args, FALSE )
+		set_arg->expr = value
+		set_arg->mode = INVALID
+
+		procexpr = cProcArgList( base_parent, sym, NULL, @set_args, set_opts )
+		if( procexpr = NULL ) then
+			return NULL
+		end if
+
+		function = procexpr
+		exit function
+	end if
 
 	if( is_propset = FALSE ) then
 		'' Take care of functions returning BYREF

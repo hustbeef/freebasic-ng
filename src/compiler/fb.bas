@@ -233,40 +233,6 @@ dim shared as FBTARGET targetinfo(0 to FB_COMPTARGETS-1) = _
 		0   or FB_TARGETOPT_UNIX _
 		    or FB_TARGETOPT_CALLEEPOPSHIDDENPTR _
 		    or FB_TARGETOPT_RETURNINREGS _
-	), _
-	( _
-		@"amiga", _
-		FB_DATATYPE_ULONG, _
-		FB_FUNCMODE_CDECL, _
-		FB_FUNCMODE_STDCALL_MS, _
-		0   or FB_TARGETOPT_CALLEEPOPSHIDDENPTR _
-	), _
-	( _
-		@"aros", _
-		FB_DATATYPE_ULONG, _
-		FB_FUNCMODE_CDECL, _
-		FB_FUNCMODE_STDCALL_MS, _
-		0   or FB_TARGETOPT_UNIX _
-		    or FB_TARGETOPT_CALLEEPOPSHIDDENPTR _
-		    or FB_TARGETOPT_ELF _
-	), _
-	( _
-		@"morphos", _
-		FB_DATATYPE_ULONG, _
-		FB_FUNCMODE_CDECL, _
-		FB_FUNCMODE_STDCALL_MS, _
-		0   or FB_TARGETOPT_UNIX _
-		    or FB_TARGETOPT_CALLEEPOPSHIDDENPTR _
-		    or FB_TARGETOPT_ELF _
-	), _
-	( _
-		@"amigaos4", _
-		FB_DATATYPE_ULONG, _
-		FB_FUNCMODE_CDECL, _
-		FB_FUNCMODE_STDCALL_MS, _
-		0   or FB_TARGETOPT_UNIX _
-		    or FB_TARGETOPT_CALLEEPOPSHIDDENPTR _
-		    or FB_TARGETOPT_ELF _
 	) _
 }
 
@@ -284,8 +250,7 @@ dim shared as FBCPUFAMILYINFO cpufamilyinfo(0 to FB_CPUFAMILY__COUNT-1) = _
 	(@"powerpc"    , FB_DEFAULT_CPUTYPE_PPC    ), _
 	(@"powerpc64"  , FB_DEFAULT_CPUTYPE_PPC64  ), _
 	(@"powerpc64le", FB_DEFAULT_CPUTYPE_PPC64LE), _
-	(@"asmjs"      , FB_DEFAULT_CPUTYPE_ASMJS  ), _
-	(@"m68k"       , FB_DEFAULT_CPUTYPE_M68K   )  _
+	(@"asmjs"      , FB_DEFAULT_CPUTYPE_ASMJS  )  _
 }
 
 type FBCPUTYPEINFO
@@ -321,8 +286,7 @@ dim shared as FBCPUTYPEINFO cputypeinfo(0 to FB_CPUTYPE__COUNT-1) = _
 	( NULL       , @"powerpc"      , FB_CPUFAMILY_PPC    , 32, TRUE  ), _ '' FB_CPUTYPE_PPC
 	( NULL       , @"powerpc64"    , FB_CPUFAMILY_PPC64  , 64, TRUE  ), _ '' FB_CPUTYPE_PPC64
 	( NULL       , @"powerpc64le"  , FB_CPUFAMILY_PPC64LE, 64, FALSE ), _ '' FB_CPUTYPE_PPC64LE
-	( NULL       , @"asmjs"        , FB_CPUFAMILY_ASMJS  , 32, FALSE ), _ '' FB_CPUTYPE_ASMJS
-	( @"68020"   , @"m68k"         , FB_CPUFAMILY_M68K   , 32, TRUE  )  _ '' FB_CPUTYPE_M68K
+	( NULL       , @"asmjs"        , FB_CPUFAMILY_ASMJS  , 32, FALSE )  _ '' FB_CPUTYPE_ASMJS
 }
 
 ''::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
@@ -1198,7 +1162,18 @@ sub fbAddLib(byval libname as zstring ptr)
 		exit sub
 	end if
 
-	strsetAdd(@env.libs, *libname, FALSE)
+	'' A name ending in ".dll" (e.g. Lib "user32.dll") would make the
+	'' linker search for "libuser32.dll.a"/"user32.dll.dll" and fail.
+	'' Strip the extension so the linker can find the import library
+	'' "libuser32.a" (or the DLL itself) instead.
+	dim as string lname = *libname
+	if( len( lname ) > 4 ) then
+		if( lcase( right( lname, 4 ) ) = ".dll" ) then
+			lname = left( lname, len( lname ) - 4 )
+		end if
+	end if
+
+	strsetAdd(@env.libs, lname, FALSE)
 end sub
 
 sub fbAddLibPath(byval path as zstring ptr)
@@ -1804,16 +1779,7 @@ function fbGetBackendValistType _
 			typedef = FB_CVA_LIST_BUILTIN_ARM
 
 		case FB_CPUFAMILY_AARCH64
-			'' Darwin and Windows use a pointer __builtin_va_list on AArch64,
-			'' unlike the five-field AAPCS64 structure used by Linux and other
-			'' ELF AArch64 targets. Modelling either pointer type as that
-			'' structure corrupts calls that pass cva_list BYREF.
-			if( (env.clopt.target = FB_COMPTARGET_DARWIN) or _
-			    (env.clopt.target = FB_COMPTARGET_WIN32) ) then
-				typedef = FB_CVA_LIST_BUILTIN_POINTER
-			else
-				typedef = FB_CVA_LIST_BUILTIN_AARCH64
-			end if
+			typedef = FB_CVA_LIST_BUILTIN_AARCH64
 
 		case FB_CPUFAMILY_PPC
 			typedef = FB_CVA_LIST_BUILTIN_POINTER

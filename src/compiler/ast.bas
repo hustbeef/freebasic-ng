@@ -309,6 +309,35 @@ function astGetEffectiveNode( byval n as ASTNODE ptr ) as ASTNODE ptr
 	end if
 end function
 
+'' Determine whether the value produced by an expression is owned by a compiler
+'' temporary variable, and return that result symbol when it is.  Keep this as
+'' an AST-shape query: consumers can use the ownership fact without knowing which
+'' producer (IIF, transform, intrinsic, ...) created the temporary.
+function astGetResultTempSym( byval n as ASTNODE ptr ) as FBSYMBOL ptr
+	if( n = NULL ) then return NULL
+
+	dim as ASTNODE ptr effective = astGetEffectiveNode( n )
+	if( effective = NULL ) then return NULL
+
+	select case effective->class
+	case AST_NODECLASS_VAR
+		if( (effective->sym <> NULL) andalso symbIsVar( effective->sym ) andalso _
+		    symbIsTemp( effective->sym ) ) then
+			return effective->sym
+		end if
+
+	case AST_NODECLASS_IIF
+		'' IIF keeps the symbol that owns its selected result in n->sym.  The
+		'' branch code initializes that same temp before the IIF yields its value.
+		if( (effective->sym <> NULL) andalso symbIsVar( effective->sym ) andalso _
+		    symbIsTemp( effective->sym ) ) then
+			return effective->sym
+		end if
+	end select
+
+	function = NULL
+end function
+
 '' Determine the AST_NODECLASS_* of the given expression, while transparently
 '' handling LINKs.
 function astGetEffectiveClass( byval n as ASTNODE ptr ) as integer

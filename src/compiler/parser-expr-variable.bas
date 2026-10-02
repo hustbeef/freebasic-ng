@@ -500,17 +500,18 @@ private function hStrIndexing _
 		errReport( FB_ERRMSG_SYNTAXERROR, TRUE )
 	end if
 
-	if( typeGet( dtype ) = FB_DATATYPE_STRING ) then
-		'' deref
+	if( symbTypeIsManagedStringOwner( dtype ) ) then
+		'' managed STRING/native WSTRING owner: fetch descriptor.data
 		varexpr = astBuildStrPtr( varexpr )
 	else
-		'' address of
+		'' address of fixed z/wstring storage
 		varexpr = astNewADDROF( varexpr )
 	end if
 
 	'' add index
-	if( typeGet( dtype ) = FB_DATATYPE_WCHAR ) then
-		'' times sizeof( wchar ) if it's wstring
+	dim as FB_STRINGWIDTH strwidth = symbTypeGetStringWidth( dtype )
+	if( strwidth = FB_STRINGWIDTH_WIDE ) then
+		'' times sizeof( wchar ) for legacy/native wstrings
 		idxexpr = astNewBOP( AST_OP_MUL, idxexpr, _
 		                     astNewCONSTi( typeGetSize( FB_DATATYPE_WCHAR ) ) )
 	end if
@@ -523,8 +524,8 @@ private function hStrIndexing _
 	varexpr = astNewBOP( AST_OP_ADD, varexpr, idxexpr )
 
 	'' wstring?
-	if( typeGet( dtype ) = FB_DATATYPE_WCHAR ) then
-		dtype = typeJoin( dtype, env.target.wchar )
+	if( strwidth = FB_STRINGWIDTH_WIDE ) then
+		dtype = typeJoin( FB_DATATYPE_WCHAR, env.target.wchar )
 	else
 		dtype = typeJoin( dtype, FB_DATATYPE_UBYTE )
 	end if
@@ -675,7 +676,7 @@ function cMemberDeref _
 
 			select case( typeGetDtAndPtrOnly( dtype ) )
 			'' string, fixstr, w|zstring? In that case '[]' means string indexing, not MemberDeref.
-			case FB_DATATYPE_STRING, FB_DATATYPE_FIXSTR, _
+			case FB_DATATYPE_STRING, FB_DATATYPE_WSTRING, FB_DATATYPE_FIXSTR, _
 			     FB_DATATYPE_CHAR, FB_DATATYPE_WCHAR
 				varexpr = hStrIndexing( dtype, varexpr, hCheckIntegerIndex( idxexpr ) )
 				idxexpr = NULL
@@ -1160,6 +1161,7 @@ function cVariableEx overload _
 
 	assert( varexpr->dtype = sym->typ )
 	assert( varexpr->subtype = sym->subtype )
+
 
 	if( is_funcptr = FALSE ) then
 		if( check_fields ) then

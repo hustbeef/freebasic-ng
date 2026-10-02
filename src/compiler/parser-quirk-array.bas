@@ -53,6 +53,104 @@ function cEraseStmt() as integer
 	function = TRUE
 end function
 
+
+private function hSwapDynWstrWithRawWstr _
+	( _
+		byval l as ASTNODE ptr, _
+		byval r as ASTNODE ptr _
+	) as integer
+
+	'' Mirror STRING <-> ZString*N SWAP for the wide side: one operand is a
+	'' managed counted WSTRING owner, the other is an explicit raw WString*N
+	'' boundary (WCHAR lvalue).  Do not use rtlWstrSwap(), because that raw
+	'' helper cannot resize/own the managed descriptor.  Lower to ordinary
+	'' assignments through a managed temp, reusing the existing WSTRING
+	'' assignment/copy-to-raw rules.
+	dim as ASTNODE ptr tree = NULL, stepnode = any
+	dim as FBSYMBOL ptr tmp = any
+	dim as integer ldtype = astGetDataType( l ), rdtype = astGetDataType( r )
+	dim as longint lrawchars = 0, rrawchars = 0
+
+	assert( ((ldtype = FB_DATATYPE_WSTRING) and (rdtype = FB_DATATYPE_WCHAR)) or _
+	        ((ldtype = FB_DATATYPE_WCHAR) and (rdtype = FB_DATATYPE_WSTRING)) )
+
+	'' If either raw fixed WString*N side has an index or other side effect, then
+	'' astMakeRef() below will rewrite it as a dereferenced WCHAR pointer.  At
+	'' that point the original fixed span is no longer recoverable from the AST.
+	'' Capture the raw boundary capacity first, exactly as fixed-string copyback
+	'' paths do, then use it explicitly for managed-owner -> raw-boundary writes.
+	if( ldtype = FB_DATATYPE_WCHAR ) then
+		lrawchars = rtlCalcStrLen( l, ldtype )
+	elseif( rdtype = FB_DATATYPE_WCHAR ) then
+		rrawchars = rtlCalcStrLen( r, rdtype )
+	end if
+
+	'' Only explicit fixed WString*N storage has a known writable capacity.  A
+	'' bare raw WString pointer/deref has no safe copy-back bound and must not be
+	'' silently treated as a fixed boundary.
+	if( ((ldtype = FB_DATATYPE_WCHAR) and (lrawchars <= 0)) or _
+	    ((rdtype = FB_DATATYPE_WCHAR) and (rrawchars <= 0)) ) then
+		return FALSE
+	end if
+
+	'' Evaluate side-effecting lvalues once, then reuse the captured addresses for
+	'' the three SWAP steps below.  This mirrors the generic SWAP stabilisation but
+	'' keeps the fixed-wide capacity saved above.
+	if( astHasSideFx( l ) ) then
+		stepnode = astMakeRef( l )
+		if( stepnode = NULL ) then return FALSE
+		tree = astNewLINK( tree, stepnode, AST_LINK_RETURN_NONE )
+	end if
+
+	if( astHasSideFx( r ) ) then
+		stepnode = astMakeRef( r )
+		if( stepnode = NULL ) then return FALSE
+		tree = astNewLINK( tree, stepnode, AST_LINK_RETURN_NONE )
+	end if
+
+	tmp = symbAddTempVar( FB_DATATYPE_WSTRING )
+	astDtorListAdd( tmp )
+
+	'' tmp = original lhs
+	stepnode = rtlDynWstrAssign( astNewVAR( tmp ), astCloneTree( l ), -2, TRUE )
+	if( stepnode = NULL ) then
+		return FALSE
+	end if
+	tree = astNewLINK( tree, stepnode, AST_LINK_RETURN_NONE )
+
+	'' lhs = original rhs
+	if( ldtype = FB_DATATYPE_WCHAR ) then
+		stepnode = astNewCALL( PROCLOOKUP( DWSTRCOPYTOW ) )
+		if( astNewARG( stepnode, astCloneTree( l ) ) = NULL ) then return FALSE
+		if( astNewARG( stepnode, astNewCONSTi( lrawchars ) ) = NULL ) then return FALSE
+		if( astNewARG( stepnode, astCloneTree( r ), FB_DATATYPE_WSTRING ) = NULL ) then return FALSE
+	else
+		stepnode = astNewASSIGN( astCloneTree( l ), astCloneTree( r ) )
+	end if
+	if( stepnode = NULL ) then
+		return FALSE
+	end if
+	tree = astNewLINK( tree, stepnode, AST_LINK_RETURN_NONE )
+
+	'' rhs = tmp
+	if( rdtype = FB_DATATYPE_WCHAR ) then
+		stepnode = astNewCALL( PROCLOOKUP( DWSTRCOPYTOW ) )
+		if( astNewARG( stepnode, r ) = NULL ) then return FALSE
+		if( astNewARG( stepnode, astNewCONSTi( rrawchars ) ) = NULL ) then return FALSE
+		if( astNewARG( stepnode, astNewVAR( tmp ), FB_DATATYPE_WSTRING ) = NULL ) then return FALSE
+	else
+		stepnode = astNewASSIGN( r, astNewVAR( tmp ) )
+	end if
+	if( stepnode = NULL ) then
+		return FALSE
+	end if
+	tree = astNewLINK( tree, stepnode, AST_LINK_RETURN_NONE )
+
+	astAdd( tree )
+	return TRUE
+end function
+
+'':::::
 private function hScopedSwap( ) as integer
 
 	'' SWAP
@@ -127,9 +225,23 @@ private function hScopedSwap( ) as integer
 		end select
 		exit function
 
+	case FB_DATATYPE_WSTRING
+		if( rdtype = FB_DATATYPE_WSTRING ) then
+			'' Native counted WSTRING descriptors own their buffers.  Swap the
+			'' descriptors themselves so ownership moves without deep-copy temps.
+			function = rtlMemSwap( l, r )
+		elseif( rdtype = FB_DATATYPE_WCHAR ) then
+			function = hSwapDynWstrWithRawWstr( l, r )
+		else
+			errReport( FB_ERRMSG_TYPEMISMATCH )
+		end if
+		exit function
+
 	case FB_DATATYPE_WCHAR
 		if( rdtype = FB_DATATYPE_WCHAR ) then
 			function = rtlWstrSwap( l, r )
+		elseif( rdtype = FB_DATATYPE_WSTRING ) then
+			function = hSwapDynWstrWithRawWstr( l, r )
 		else
 			errReport( FB_ERRMSG_TYPEMISMATCH )
 		end if

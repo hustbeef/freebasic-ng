@@ -83,10 +83,8 @@ function cLRSetStmt(byval tk as FB_TOKEN) as integer
 	astTryOvlStringCONV( dstexpr )
 
 	dtype1 = astGetDataType( dstexpr )
-	select case as const dtype1
-	case FB_DATATYPE_STRING, FB_DATATYPE_FIXSTR, _
-		 FB_DATATYPE_CHAR, FB_DATATYPE_WCHAR, _
-		 FB_DATATYPE_STRUCT
+	if( symbTypeIsStringStorageValue( dtype1 ) or _
+	    (dtype1 = FB_DATATYPE_STRUCT) ) then
 
 		if( is_rset and (dtype1 = FB_DATATYPE_STRUCT) ) then
 			errReport( FB_ERRMSG_INVALIDDATATYPES )
@@ -111,12 +109,12 @@ function cLRSetStmt(byval tk as FB_TOKEN) as integer
 			end if
 		end if
 
-	case else
+	else
 		errReport( FB_ERRMSG_INVALIDDATATYPES )
 		'' error recovery: fake a var
 		astDelTree( dstexpr )
 		dstexpr = CREATEFAKEID( )
-	end select
+	end if
 
 	'' ',' or '='
 	if( hMatch( CHAR_COMMA ) = FALSE ) then
@@ -131,17 +129,13 @@ function cLRSetStmt(byval tk as FB_TOKEN) as integer
 	astTryOvlStringCONV( srcexpr )
 
 	dtype2 = astGetDataType( srcexpr )
-	select case as const dtype2
-	case FB_DATATYPE_STRING, FB_DATATYPE_FIXSTR, _
-		 FB_DATATYPE_CHAR, FB_DATATYPE_WCHAR, _
-		 FB_DATATYPE_STRUCT
-
-	case else
+	if( (symbTypeIsStringStorageValue( dtype2 ) = FALSE) and _
+	    (dtype2 <> FB_DATATYPE_STRUCT) ) then
 		errReport( FB_ERRMSG_INVALIDDATATYPES )
 		'' error recovery: fake a var
 		astDelTree( srcexpr )
 		srcexpr = CREATEFAKEID( )
-	end select
+	end if
 
 	if( (dtype1 = FB_DATATYPE_STRUCT) or _
 		(dtype2 = FB_DATATYPE_STRUCT) ) then
@@ -258,7 +252,14 @@ private function cStrCHR(byval is_wstr as integer) as ASTNODE ptr
 			function = astNewVAR( symbAllocWstrConst( ws, cnt ) )
 		end if
 	else
-		function = rtlStrChr( cnt, exprtb(), is_wstr )
+		if( is_wstr ) then
+			'' WChr() is the wide mirror of Chr(): a non-literal result is a
+			'' managed bare WString. Raw WCHAR storage only appears at an explicit
+			'' WString * N / WString Ptr compatibility boundary.
+			function = rtlDynWstrChr( cnt, exprtb() )
+		else
+			function = rtlStrChr( cnt, exprtb(), FALSE )
+		end if
 	end if
 end function
 
@@ -267,6 +268,9 @@ private function cStrASC() as ASTNODE ptr
 	dim as longint p = any
 
 	hMatchLPRNT( )
+
+	'' Producers already carry managed-WSTRING type information; ASC() only
+	'' consumes the resulting AST and must not choose its representation.
 	hMatchExpressionEx( expr1, FB_DATATYPE_STRING )
 
 	'' (',' Expression)?
@@ -400,14 +404,10 @@ function cCVXFunct(byval tk as FB_TOKEN) as ASTNODE ptr
 
 	'' constant? evaluate at compile-time
 	dim as FBSYMBOL ptr litsym = NULL
-	dim as integer is_str = FALSE
-	select case astGetDataType( expr1 )
-	case FB_DATATYPE_CHAR
+	dim as integer is_str = symbTypeIsStringStorageValue( astGetDataType( expr1 ) )
+	if( astGetDataType( expr1 ) = FB_DATATYPE_CHAR ) then
 		litsym = astGetStrLitSymbol( expr1 )
-		is_str = TRUE
-	case FB_DATATYPE_STRING, FB_DATATYPE_FIXSTR, FB_DATATYPE_WCHAR
-		is_str = TRUE
-	end select
+	end if
 
 	dim as integer allowconst = TRUE
 
@@ -679,7 +679,53 @@ function cStringFunct(byval tk as FB_TOKEN) as ASTNODE ptr
 		if( is_wstr = FALSE ) then
 			expr1 = rtlToStr( expr1, fbLangIsSet( FB_LANG_QB ) )
 		else
-			expr1 = rtlToWstr( expr1 )
+			'' WStr() is type-driven: numeric/floating inputs produce managed WSTRING,
+			'' while explicit string-family/UDT conversion forms remain raw boundaries.
+			''
+			'' A narrow string literal passed through WStr() is also the language's
+			'' compile-time wide-literal form.  Preserve it as a constant WCHAR AST so
+			'' constant folding such as ASC(WStr("abc"), n) remains available.
+			if( astGetDataType( expr1 ) = FB_DATATYPE_CHAR ) then
+				if( astGetStrLitSymbol( expr1 ) <> NULL ) then
+					dim as ASTNODE ptr litexpr = rtlWstrRawBoundary( expr1 )
+					if( litexpr <> NULL ) then
+						function = litexpr
+						exit function
+					end if
+				end if
+			end if
+
+			'' WStr() is a boundary constructor only for non-managed string-family
+			'' producers.  A String/FixStr/CHAR/WCHAR expression keeps the official
+			'' NUL-terminated conversion behaviour, so WStr("a" + Chr(0)) remains a
+			'' legacy raw WCHAR boundary and the official wstring tests continue to
+			'' pass.  A managed WSTRING expression, however, is already the wide
+			'' owner form and must not be prematurely materialized into raw WCHAR
+			'' storage, or counted data such as WChr(0) inside concat trees would be
+			'' truncated.
+			if( symbTypeIsWstrRawBoundaryProducer( astGetDataType( expr1 ) ) ) then
+				dim as ASTNODE ptr rawexpr = rtlWstrRawBoundary( expr1 )
+				if( rawexpr <> NULL ) then
+					function = rawexpr
+					exit function
+				end if
+			end if
+
+			'' A legacy UDT may define Operator Cast() ByRef As WString.  In that
+			'' form WStr(udt) is also used as an explicit raw WSTRING lvalue (for
+			'' example by SWAP).  Preserve that type-driven lvalue conversion here;
+			'' do not materialize it into a managed temporary.  This is a real raw
+			'' compatibility boundary, not parser token/context representation selection.
+			if( astGetDataClass( expr1 ) = FB_DATACLASS_UDT ) then
+				dim as ASTNODE ptr rawexpr = rtlWstrRawBoundary( expr1 )
+				if( rawexpr <> NULL ) then
+					if( astGetDataType( rawexpr ) = FB_DATATYPE_WCHAR ) then
+						function = rawexpr
+						exit function
+					end if
+				end if
+			end if
+			expr1 = rtlDynWstrFromExpr( expr1 )
 		end if
 		if( expr1 = NULL ) then
 			errReport( FB_ERRMSG_INVALIDDATATYPES )
@@ -720,13 +766,40 @@ function cStringFunct(byval tk as FB_TOKEN) as ASTNODE ptr
 		hMatchLPRNT( )
 		hMatchExpressionEx( expr1, FB_DATATYPE_INTEGER )
 		hMatchCOMMA( )
-		hMatchExpressionEx( expr2, FB_DATATYPE_INTEGER )
+		if( is_wstr ) then
+			'' WString() mirrors String(): the producer itself determines the managed
+			'' result type; no destination/consumer context is needed.
+			expr2 = cExpression( )
+			if( expr2 = NULL ) then
+				errReport( FB_ERRMSG_EXPECTEDEXPRESSION )
+				expr2 = astNewCONSTi( 0 )
+			end if
+			'' String-family fill sources repeat their first code unit, like
+			'' the official String( n, str ) form: narrow sources (String,
+			'' String * N, literals) and raw wide sources (WString * N)
+			'' materialize as managed WSTRING instead of being forced
+			'' through a numeric conversion.
+			select case as const astGetDataType( expr2 )
+			case FB_DATATYPE_STRING, FB_DATATYPE_FIXSTR, _
+			     FB_DATATYPE_CHAR, FB_DATATYPE_WCHAR
+				expr2 = rtlDynWstrFromExpr( expr2 )
+			end select
+			if( astGetDataType( expr2 ) <> FB_DATATYPE_WSTRING ) then
+				expr2 = astNewCONV( FB_DATATYPE_INTEGER, NULL, expr2 )
+				if( expr2 = NULL ) then
+					errReport( FB_ERRMSG_INVALIDDATATYPES )
+					expr2 = astNewCONSTi( 0 )
+				end if
+			end if
+		else
+			hMatchExpressionEx( expr2, FB_DATATYPE_INTEGER )
+		end if
 		hMatchRPRNT( )
 
 		if( is_wstr = FALSE ) then
 			expr1 = rtlStrFill( expr1, expr2 )
 		else
-			expr1 = rtlWstrFill( expr1, expr2 )
+			expr1 = rtlDynWstrFill( expr1, expr2 )
 		end if
 		if( expr1 = NULL ) then
 			errReport( FB_ERRMSG_INVALIDDATATYPES )
@@ -752,10 +825,14 @@ function cStringFunct(byval tk as FB_TOKEN) as ASTNODE ptr
 		lexSkipToken( LEXCHECK_POST_SUFFIX )
 
 		hMatchLPRNT( )
+
+		'' The first expression is syntactically ambiguous (start or text), but
+		'' representation comes from each parsed AST, not from consumer context.
 		hMatchExpressionEx( expr1, FB_DATATYPE_INTEGER )
 		hMatchCOMMA( )
 		is_any = hMatch( FB_TK_ANY, LEXCHECK_POST_SUFFIX )
 		hMatchExpressionEx( expr2, FB_DATATYPE_STRING )
+
 		expr3 = NULL
 		if( is_any = FALSE ) then
 			if( hMatch( CHAR_COMMA ) ) then
@@ -782,6 +859,8 @@ function cStringFunct(byval tk as FB_TOKEN) as ASTNODE ptr
 		lexSkipToken( LEXCHECK_POST_SUFFIX )
 
 		hMatchLPRNT( )
+
+		'' Text/pattern producers retain their own string-family AST type.
 		hMatchExpressionEx( expr1, FB_DATATYPE_STRING )
 		hMatchCOMMA( )
 		is_any = hMatch( FB_TK_ANY, LEXCHECK_POST_SUFFIX )

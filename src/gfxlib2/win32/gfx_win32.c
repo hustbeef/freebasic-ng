@@ -36,9 +36,7 @@ const GFXDRIVER *__fb_gfx_drivers_list[] = {
 	&fb_gfxDriverDirectDraw,
 #endif /* HOST_CYGWIN */
 	&fb_gfxDriverGDI,
-#ifndef DISABLE_OPENGL
 	&fb_gfxDriverOpenGL,
-#endif
 	NULL
 };
 

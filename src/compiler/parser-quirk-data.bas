@@ -61,7 +61,13 @@ function cDataStmt  _
 				errReport( FB_ERRMSG_EXPECTEDIDENTIFIER )
 				hSkipUntil( CHAR_COMMA )
 			else
-				if( rtlDataRead( expr ) = FALSE ) then
+				'' READ mutates its destination, just like INPUT/LINE INPUT.
+				'' Do not let top-level CONST descriptors/literals through to the
+				'' rtlib write path; native counted WSTRING CONSTs introduced by
+				'' the fbstring mirror must obey the same destination guard.
+				if( astReportIfNotWritableDestination( expr ) ) then
+					'' keep parsing following READ destinations after reporting the common error
+				elseif( rtlDataRead( expr ) = FALSE ) then
 					exit function
 				end if
 			end if

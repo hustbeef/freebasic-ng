@@ -397,6 +397,8 @@ private function hParamDecl _
 			options or= FB_SYMBTYPEOPT_ISBYREF
 		end if
 
+		'' cSymbolType() is the single source of truth for WSTRING spelling:
+		'' bare owner versus explicit fixed/pointer raw storage.
 		if( cSymbolType( dtype, subtype, , , options ) = FALSE ) then
 			hParamError( proc, id )
 			'' error recovery: fake type

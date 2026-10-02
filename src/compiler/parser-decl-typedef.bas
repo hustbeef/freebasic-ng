@@ -60,6 +60,8 @@ private function hReadType _
 
 	static as zstring * FB_MAXNAMELEN+1 tname
 
+	'' cSymbolType() is the single source of truth for WString typedefs too.
+	'' A bare alias is managed; explicit * N/PTR suffixes remain raw.
 	if( cSymbolType( dtype, subtype, lgt, is_fixlenstr, FB_SYMBTYPEOPT_ALLOWFORWARD ) ) then
 		return NULL
 	end if

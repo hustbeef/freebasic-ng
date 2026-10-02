@@ -28,6 +28,7 @@ dim shared symb_dtypeTB( 0 to FB_DATATYPES-1 ) as SYMB_DATATYPE => _
 	( FB_DATACLASS_FPOINT ,  8, TRUE ,  0, FB_DATATYPE_DOUBLE  , FB_SIZETYPE_FLOAT64, @"double"   ), _
 	( FB_DATACLASS_STRING , -1, FALSE,  0, FB_DATATYPE_STRING  , -1                 , @"string"   ), _
 	( FB_DATACLASS_STRING ,  1, FALSE,  0, FB_DATATYPE_FIXSTR  , -1                 , @"string"   ), _
+	( FB_DATACLASS_STRING , -1, FALSE,  0, FB_DATATYPE_WSTRING , -1                 , @"wstring"  ), _
 	( FB_DATACLASS_UNKNOWN, -1, FALSE,  0, FB_DATATYPE_VA_LIST , -1                 , @"va_list"  ), _
 	( FB_DATACLASS_UDT    ,  0, FALSE,  0, FB_DATATYPE_STRUCT  , -1                 , @"type"     ), _
 	( FB_DATACLASS_UDT    ,  0, FALSE,  0, FB_DATATYPE_NAMESPC , -1                 , @"namepace" ), _
@@ -72,6 +73,7 @@ sub symbDataInit( )
 		symb_dtypeTB(FB_DATATYPE_UINT    ).size = 8
 		symb_dtypeTB(FB_DATATYPE_ENUM    ).size = 8
 		symb_dtypeTB(FB_DATATYPE_STRING  ).size = 24
+		symb_dtypeTB(FB_DATATYPE_WSTRING ).size = 24
 		symb_dtypeTB(FB_DATATYPE_POINTER ).size = 8
 
 		symb_dtypeTB(FB_DATATYPE_INTEGER ).sizetype = FB_SIZETYPE_INT64
@@ -88,6 +90,7 @@ sub symbDataInit( )
 		symb_dtypeTB(FB_DATATYPE_UINT    ).size = 4
 		symb_dtypeTB(FB_DATATYPE_ENUM    ).size = 4
 		symb_dtypeTB(FB_DATATYPE_STRING  ).size = 12
+		symb_dtypeTB(FB_DATATYPE_WSTRING ).size = 12
 		symb_dtypeTB(FB_DATATYPE_POINTER ).size = 4
 
 		symb_dtypeTB(FB_DATATYPE_INTEGER ).sizetype = FB_SIZETYPE_INT32
@@ -332,8 +335,12 @@ function typeNeedsDtorCall _
 		byval dtype as integer, _
 		byval subtype as FBSYMBOL ptr _
 	) as integer
+
+	'' Managed STRING and dynamic bare WSTRING share the same counted-owner
+	'' destruction policy.  NEW/DELETE should ask the shared owner classifier
+	'' instead of maintaining a second local dtype list.
 	function = typeHasDtor( dtype, subtype ) or _
-		(typeGetDtAndPtrOnly( dtype ) = FB_DATATYPE_STRING)
+	           symbTypeIsManagedStringOwner( dtype )
 end function
 
 '' Check for "trivial" types, i.e. those that will really be passed Byval when
@@ -349,9 +356,15 @@ function typeIsTrivial _
 
 	function = TRUE
 
-	select case( typeGetDtAndPtrOnly( dtype ) )
-	case FB_DATATYPE_STRING
+	'' Managed STRING and dynamic bare WSTRING are both counted owners with
+	'' copy/destruction semantics.  Keep that policy in the shared managed-owner
+	'' classifier instead of maintaining another local STRING/WSTRING pair here.
+	if( symbTypeIsManagedStringOwner( dtype ) ) then
 		function = FALSE
+		exit function
+	end if
+
+	select case( typeGetDtAndPtrOnly( dtype ) )
 	case FB_DATATYPE_STRUCT
 		function = symbCompIsTrivial( subtype )
 	end select

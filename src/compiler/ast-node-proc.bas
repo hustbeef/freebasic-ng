@@ -479,7 +479,7 @@ sub astProcBegin( byval sym as FBSYMBOL ptr, byval ismain as integer )
 
 	'' local error handler
 	with sym->proc.ext->err
-		.ctx = NULL
+		.lasthnd = NULL
 		.lastmod = NULL
 		.lastfun = NULL
 	end with
@@ -555,8 +555,9 @@ private function hCheckErrHnd _
 			.lastmod = NULL
 		end if
 
-		if( .ctx <> NULL ) then
-			rtlErrorHandlerExit( astNewADDROF( astNewVAR( .ctx ) ) )
+		if( .lasthnd <> NULL ) then
+			rtlErrorSetHandler( astNewVAR( .lasthnd ), FALSE )
+			.lasthnd = NULL
 		end if
 	end with
 
@@ -855,8 +856,13 @@ private sub hLoadProcResult( byval proc as FBSYMBOL ptr )
 	'' will be trashed when the function returns (also, the string returned will be
 	'' set as temp, so any assignment or when passed as parameter to another proc
 	'' will deallocate this string)
-	if( (symbGetType( proc ) = FB_DATATYPE_STRING) and (not symbIsReturnByRef( proc )) ) then
-		n = rtlStrAllocTempResult( astNewVAR( s ) )
+	if( symbTypeIsManagedStringOwner( symbGetType( proc ) ) and _
+	    (not symbIsReturnByRef( proc )) ) then
+		if( symbGetType( proc ) = FB_DATATYPE_WSTRING ) then
+			n = rtlDynWstrAllocTempResult( astNewVAR( s ) )
+		else
+			n = rtlStrAllocTempResult( astNewVAR( s ) )
+		end if
 
 		select case env.clopt.backend
 		case FB_BACKEND_GCC, FB_BACKEND_CLANG, FB_BACKEND_LLVM, FB_BACKEND_GAS64
@@ -1261,13 +1267,15 @@ private sub hCallFieldDtor _
 		'' Normal field
 		if( symbGetType( fld ) = FB_DATATYPE_STRING ) then
 			astAdd( rtlStrDelete( astBuildVarField( this_, fld ) ) )
+		elseif( symbGetType( fld ) = FB_DATATYPE_WSTRING ) then
+			astAdd( rtlDynWstrDelete( astBuildVarField( this_, fld ) ) )
 		elseif( symbHasDtor( fld ) ) then
 			'' dtor( this.field )
 			astAdd( astBuildDtorCall( symbGetSubtype( fld ), astBuildVarField( this_, fld ) ) )
 		end if
 	else
 		'' Fixed-size array field
-		if( symbGetType( fld ) = FB_DATATYPE_STRING ) then
+		if( symbTypeIsManagedStringOwner( symbGetType( fld ) ) ) then
 			astAdd( rtlArrayErase( astNewNIDXARRAY( astBuildVarField( this_, fld ) ), FALSE, FALSE ) )
 		elseif( symbHasDtor( fld ) ) then
 			astAdd( hCallCtorList( FALSE, this_, fld ) )
@@ -1407,10 +1415,21 @@ private sub hCallStaticDtor( byval sym as FBSYMBOL ptr )
 	else
 		'' not an array?
 		if( symbGetArrayDimensions( sym ) = 0 ) then
-			'' dtor( var )
-			astAdd( astBuildDtorCall( symbGetSubtype( sym ), astBuildVarField( sym, NULL, 0 ) ) )
+			select case symbGetType( sym )
+			case FB_DATATYPE_STRING
+				astAdd( rtlStrDelete( astBuildVarField( sym, NULL, 0 ) ) )
+			case FB_DATATYPE_WSTRING
+				astAdd( rtlDynWstrDelete( astBuildVarField( sym, NULL, 0 ) ) )
+			case else
+				'' dtor( var )
+				astAdd( astBuildDtorCall( symbGetSubtype( sym ), astBuildVarField( sym, NULL, 0 ) ) )
+			end select
 		else
-			astAdd( hCallCtorList( FALSE, sym, NULL ) )
+			if( symbGetType( sym ) = FB_DATATYPE_WSTRING ) then
+				astAdd( rtlArrayErase( astNewNIDXARRAY( astBuildVarField( sym, NULL, 0 ) ), FALSE, FALSE ) )
+			else
+				astAdd( hCallCtorList( FALSE, sym, NULL ) )
+			end if
 		end if
 	end if
 end sub

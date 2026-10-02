@@ -163,7 +163,7 @@ private function cSymbolTypeFuncPtr( byval is_func as integer ) as FBSYMBOL ptr
 			errReport( FB_ERRMSG_SYNTAXERROR )
 			dtype = FB_DATATYPE_VOID
 		else
-			cProcRetType( attrib, pattrib, proc, TRUE, dtype, subtype )
+			cProcRetType( attrib, pattrib, proc, TRUE, AST_OP_ADD, dtype, subtype )
 		end if
 	else
 		'' if it's a function and type was not given, it can't be guessed
@@ -703,7 +703,9 @@ function cSymbolType _
 		case FB_TK_WSTRING
 			lexSkipToken( LEXCHECK_POST_SUFFIX )
 
-			dtype = FB_DATATYPE_WCHAR
+			'' Bare WSTRING is the managed counted owner type.  Explicit * N/PTR
+			'' suffixes are remapped below to the historical raw WCHAR family.
+			dtype = FB_DATATYPE_WSTRING
 
 		case FB_TK_FUNCTION, FB_TK_SUB
 			isfunction = (lexGetToken( ) = FB_TK_FUNCTION)
@@ -871,8 +873,14 @@ function cSymbolType _
 			'' remap type
 			dtype = FB_DATATYPE_FIXSTR
 
-		case FB_DATATYPE_CHAR, FB_DATATYPE_WCHAR
+		case FB_DATATYPE_CHAR, FB_DATATYPE_WCHAR, FB_DATATYPE_WSTRING
 			hCheckFixedStringSize( lgt )
+
+			'' WSTRING * N is explicit raw wide storage, not an array of managed
+			'' descriptors.  Typedef aliases of bare WSTRING follow the same rule.
+			if( typeGet( dtype ) = FB_DATATYPE_WSTRING ) then
+				dtype = typeJoinDtOnly( dtype, FB_DATATYPE_WCHAR )
+			end if
 
 			'' note: len of "wstring * expr" symbols will be actually
 			''       the number of chars times sizeof(wstring), so
@@ -903,6 +911,16 @@ function cSymbolType _
 		if( is_const ) then
 			dtype = typeSetIsConst( dtype )
 		end if
+
+		'' A pointer suffix is an explicit raw-wide boundary.  Convert the base
+		'' owner type before applying pointer qualifiers so WString Ptr (including
+		'' typedef aliases) remains WCHAR Ptr rather than FBWSTRING Ptr.
+		select case lexGetToken( )
+		case FB_TK_PTR, FB_TK_POINTER, FB_TK_CONST
+			if( typeGetDtAndPtrOnly( dtype ) = FB_DATATYPE_WSTRING ) then
+				dtype = typeJoinDtOnly( dtype, FB_DATATYPE_WCHAR )
+			end if
+		end select
 
 		'' (CONST (PTR|POINTER) | (PTR|POINTER))*
 		do

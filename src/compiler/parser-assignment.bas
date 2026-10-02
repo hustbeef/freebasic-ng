@@ -6,6 +6,7 @@
 #include once "fb.bi"
 #include once "fbint.bi"
 #include once "parser.bi"
+#include once "rtl.bi"
 #include once "ast.bi"
 
 '':::::
@@ -198,6 +199,17 @@ sub cAssignment( byval l as ASTNODE ptr )
 
 	'' BOP?
 	if( op <> INVALID ) then
+		'' Native counted WSTRING &= goes straight to descriptor append.
+		if( (op = AST_OP_CONCAT_SELF) and (typeGet( astGetDataType( l ) ) = FB_DATATYPE_WSTRING) ) then
+			l = rtlDynWstrConcatAssign( l, r )
+			if( l ) then
+				astAdd( l )
+			else
+				errReport( FB_ERRMSG_TYPEMISMATCH, TRUE )
+			end if
+			return
+		end if
+
 		'' l op= r
 		l = astNewSelfBOP( op, l, r, NULL, AST_OPOPT_LPTRARITH )
 		if (l) then

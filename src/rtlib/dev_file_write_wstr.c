@@ -32,12 +32,37 @@ int fb_DevFileWriteWstr( FB_FILE *handle, const FB_WCHAR* src, size_t chars )
 		}
 	}
 
-	/* convert to ascii, file should be opened with the ENCODING option
-	   to allow UTF characters to be written */
-	fb_wstr_ConvToA( buffer, chars, src );
+	/* Convert to ASCII.  fb_wstr_ConvToA() is intentionally a legacy
+	   NUL-terminated conversion helper, while this device hook receives an
+	   explicit WCHAR count.  Preserve embedded WCHAR(0) by converting each
+	   non-NUL span separately and emitting the NUL byte explicitly.  This
+	   keeps the historical conversion semantics for ordinary WSTRINGs while
+	   making the length contract of pfnWriteWstr() real. */
+	{
+		size_t inpos = 0;
+		size_t outpos = 0;
 
-	/* do write */
-	res = fwrite( (void *)buffer, 1, chars, fp ) == chars;
+		while( inpos < chars ) {
+			size_t span = 0;
+			while( (inpos + span < chars) && (src[inpos + span] != 0) )
+				++span;
+
+			if( span != 0 ) {
+				fb_wstr_ConvToA( buffer + outpos, span, src + inpos );
+				outpos += span;
+				inpos += span;
+			}
+
+			if( inpos < chars ) {
+				buffer[outpos++] = '\0';
+				++inpos;
+			}
+		}
+
+		/* pfnWriteWstr()'s ASCII device has historically emitted one byte per
+		   input WCHAR; the span conversion above retains exactly that contract. */
+		res = fwrite( (void *)buffer, 1, outpos, fp ) == outpos;
+	}
 
 	if( chars >= FB_LOCALBUFF_MAXLEN )
 		free( buffer );

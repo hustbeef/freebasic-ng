@@ -111,10 +111,6 @@
 
 #if defined HOST_DOS
 	#include "dos/fb_dos.h"
-#elif defined HOST_AMIGA
-	/* Amiga-family targets also define HOST_UNIX for shared source selection,
-	   but their C runtime ABI is distinct from the POSIX one. */
-	#include "amiga/fb_amiga.h"
 #elif defined HOST_UNIX
 	#include "unix/fb_unix.h"
 #elif defined HOST_WIN32

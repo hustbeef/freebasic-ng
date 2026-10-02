@@ -364,6 +364,13 @@ function hMangleBuiltInType _
 		return @"8FBSTRING"
 	end if
 
+	'' Native counted WSTRING is a vendor-specific descriptor type, analogous
+	'' to FBSTRING but distinct from legacy WCHAR/WSTRING pointer semantics.
+	if( dtype = FB_DATATYPE_WSTRING ) then
+		add_abbrev = TRUE
+		return @"9FBWSTRING"
+	end if
+
 	''
 	'' Integer/Long mangling:
 	''
@@ -447,6 +454,7 @@ function hMangleBuiltInType _
 		@"d", _ '' double
 		NULL, _ '' var-len string
 		NULL, _ '' fix-len string
+		NULL, _ '' native var-len wstring
 		@"c", _ '' va_list
 		NULL, _ '' struct
 		NULL, _ '' namespace

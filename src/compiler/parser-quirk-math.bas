@@ -60,6 +60,9 @@ private function hLen _
 	case FB_DATATYPE_STRING
 		return rtlStrLen( expr )
 
+	case FB_DATATYPE_WSTRING
+		return rtlDynWstrLen( expr )
+
 	case FB_DATATYPE_CHAR
 		litsym = astGetStrLitSymbol( expr )
 		if( litsym = NULL ) then
@@ -119,8 +122,20 @@ private function hLenSizeof( byval tk as integer, byval isasm as integer ) as AS
 	'' '('
 	hMatchLPRNT( )
 
-	'' Type or an Expression
+	'' Historical LEN(WSTRING)/SIZEOF(WSTRING) query the width of one raw wide
+	'' character. Keep that explicit type-token role isolated from ordinary
+	'' declarations, where bare WSTRING is the managed FBWSTRING owner.
+	dim as integer bare_wstring_typequery = _
+		(lexGetToken( ) = FB_TK_WSTRING) andalso (lexGetLookAhead( 1 ) = CHAR_RPRNT)
+
+	'' Type or an Expression. LEN/SIZEOF consume the parsed AST/type; they do not
+	'' influence the representation selected by wide-string producers.
 	expr = cTypeOrExpression( tk, dtype, subtype, lgt )
+	if( (expr = NULL) and bare_wstring_typequery ) then
+		dtype = FB_DATATYPE_WCHAR
+		subtype = NULL
+		lgt = typeGetSize( FB_DATATYPE_WCHAR )
+	end if
 
 	'' Was it an expression?
 	if( expr ) then

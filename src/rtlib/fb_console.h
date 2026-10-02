@@ -98,5 +98,6 @@ FBCALL FBSTRING    *fb_ConReadLine      ( int soft_cursor );
 FBCALL int          fb_ConsoleInput     ( FBSTRING *text, int addquestion, int addnewline );
        int          fb_ConsoleLineInput ( FBSTRING *text, void *dst, ssize_t dst_len, int fillrem, int addquestion, int addnewline );
        int          fb_ConsoleLineInputWstr( const FB_WCHAR *text, FB_WCHAR *dst, ssize_t max_chars, int addquestion, int addnewline );
+FBCALL int          fb_ConsoleLineInputDynWstr( const FB_WCHAR *text, FBWSTRING *dst, int addquestion, int addnewline );
 
        int          fb_hConsoleInputBufferChanged( void );

@@ -7,6 +7,7 @@
 #include once "fbint.bi"
 #include once "parser.bi"
 #include once "ast.bi"
+#include once "rtl.bi"
 #include once "pp.bi"
 
 declare function hCast( byval options as AST_CONVOPT ) as ASTNODE ptr
@@ -137,7 +138,7 @@ function cStrIdxOrMemberDeref _
 
 	select case as const typeGet( dtype )
 	'' zstring indexing?
-	case FB_DATATYPE_CHAR, FB_DATATYPE_WCHAR, FB_DATATYPE_STRING, FB_DATATYPE_FIXSTR
+	case FB_DATATYPE_CHAR, FB_DATATYPE_WCHAR, FB_DATATYPE_STRING, FB_DATATYPE_WSTRING, FB_DATATYPE_FIXSTR
 		'' '['?
 		if( lexGetToken( ) = CHAR_LBRACKET ) then
 			expr = cMemberDeref( dtype, subtype, expr, TRUE )
@@ -646,10 +647,43 @@ function cProcPtrBody _
 	return expr
 end function
 
+'' Materialize a managed STRING/WSTRING producer (e.g. a property get
+'' CALL) in an owner temporary, then yield its data pointer - the same
+'' value STRPTR() of a stable lvalue would expose.
+''
+'' The temp is deliberately NOT registered on the per-statement dtor list:
+'' the whole point of @prop/STRPTR(prop) is to hold the data pointer in a
+'' variable and keep reading through it afterwards (GUI caption patterns).
+'' The temp therefore lives as a function-scope stack slot; INIT semantics
+'' never read prior state, so re-evaluations of the same site stay safe
+'' (they supersede the previous buffer, like any string temporary).
+private function hMaterializeStrDataPtr _
+	( _
+		byval expr as ASTNODE ptr _
+	) as ASTNODE ptr
+
+	dim as integer dtype = astGetDataType( expr )
+	dim as FBSYMBOL ptr temp = symbAddTempVar( dtype )
+
+	dim as ASTNODE ptr ini = any
+	if( dtype = FB_DATATYPE_WSTRING ) then
+		ini = rtlDynWstrInit( astNewVAR( temp ), expr )
+	else
+		ini = astNewASSIGN( astNewVAR( temp ), expr, AST_OPOPT_ISINI )
+	end if
+	if( ini = NULL ) then
+		astDelTree( expr )
+		return NULL
+	end if
+
+	function = astNewLINK( ini, astBuildStrPtr( astNewVAR( temp ) ), AST_LINK_RETURN_RIGHT )
+end function
+
 private function hVarPtrBody _
 	( _
 		byval base_parent as FBSYMBOL ptr, _
-		byval chain_ as FBSYMCHAIN ptr _
+		byval chain_ as FBSYMCHAIN ptr, _
+		byval is_addrof as boolean = FALSE _
 	) as ASTNODE ptr
 
 	dim as ASTNODE ptr expr = cHighestPrecExpr( base_parent, chain_ )
@@ -682,14 +716,24 @@ private function hVarPtrBody _
 			return astNewCONSTi( 0 )
 		end if
 
+	case AST_NODECLASS_CALL
+		'' managed string producers (property get / function result) are
+		'' only allowed for '@', which yields the data pointer of the
+		'' materialized result temp (see the managed-WSTRING path below)
+		if( (is_addrof = FALSE) orelse _
+		    (symbTypeIsManagedStringOwner( astGetDataType( t ) ) = FALSE) ) then
+			errReportEx( FB_ERRMSG_INVALIDDATATYPES, "for @ or VARPTR" )
+			'' error recovery: fake a node
+			astDelTree( expr )
+			return astNewCONSTi( 0 )
+		end if
+
 	case else
 		errReportEx( FB_ERRMSG_INVALIDDATATYPES, "for @ or VARPTR" )
 		'' error recovery: fake a node
 		astDelTree( expr )
 		return astNewCONSTi( 0 )
-	end select
-
-	'' check op overloading
+	end select	'' check op overloading
 	scope
 		dim as FBSYMBOL ptr proc = any
 		dim as FB_ERRMSG err_num = any
@@ -709,6 +753,24 @@ private function hVarPtrBody _
 		end if
 	end scope
 
+	'' '@' on a dynamic (managed) bare WSTRING variable yields the WCHAR
+	'' data pointer, mirroring STRPTR(), for every storage kind - locals,
+	'' globals/statics, array elements, UDT fields, BYREF params.  Fixed
+	'' WSTRING * N storage stays address-based (the buffer is the data).
+	'' VARPTR() keeps returning the descriptor address for all kinds.
+	if( is_addrof ) then
+		if( (typeIsPtr( astGetFullType( expr ) ) = FALSE) andalso _
+		    (astGetDataType( expr ) = FB_DATATYPE_WSTRING) ) then
+			'' a CALL producer (property get, function result) must be
+			'' materialized in an owner temp; the helper already yields
+			'' the data pointer of that temp
+			if( astIsCALL( astSkipNoConvCAST( expr ) ) ) then
+				return hMaterializeStrDataPtr( expr )
+			end if
+			return astBuildStrPtr( expr )
+		end if
+	end if
+
 	function = astNewADDROF( expr )
 end function
 
@@ -717,6 +779,10 @@ end function
 ''                  |   PROCPTR '(' Proc ('('')')? ')'
 ''                  |   '@' (Proc ('('')')? | HighPrecExpr)
 ''                  |   SADD|STRPTR '(' Variable{str}|Const{str}|Literal{str} ')' .
+''
+'' '@' on a dynamic bare WSTRING behaves like STRPTR() - it yields the WCHAR
+'' data pointer, not the descriptor address.  VARPTR() always yields the
+'' descriptor address for managed strings.
 ''
 function cAddrOfExpression( ) as ASTNODE ptr
 	dim as ASTNODE ptr expr = NULL
@@ -751,7 +817,7 @@ function cAddrOfExpression( ) as ASTNODE ptr
 		end if
 
 		'' anything else
-		return hVarPtrBody( base_parent, chain_ )
+		return hVarPtrBody( base_parent, chain_, TRUE )
 	end if
 
 	select case as const lexGetToken( )
@@ -799,6 +865,7 @@ function cAddrOfExpression( ) as ASTNODE ptr
 
 	'' SADD|STRPTR '(' Variable{str} ')'
 	case FB_TK_SADD, FB_TK_STRPTR
+		dim as integer is_strptr = (lexGetToken( ) = FB_TK_STRPTR)
 		lexSkipToken( LEXCHECK_POST_SUFFIX )
 
 		'' '('
@@ -828,7 +895,11 @@ function cAddrOfExpression( ) as ASTNODE ptr
 			end if
 		end if
 
-		if( symbIsString( dtype ) = FALSE ) then
+		'' Native counted-WSTRING is not part of legacy symbIsString(), because
+		'' that helper also drives fixed/NUL-terminated string semantics.  STRPTR
+		'' is the explicit ABI escape hatch: expose descriptor.data as WCHAR ptr.
+		if( (symbIsString( dtype ) = FALSE) and _
+		    (not (is_strptr and (dtype = FB_DATATYPE_WSTRING))) ) then
 			errReport( FB_ERRMSG_INVALIDDATATYPES )
 			'' error recovery: skip until ')' and fake a node
 			hSkipUntil( CHAR_RPRNT, TRUE )
@@ -846,26 +917,44 @@ function cAddrOfExpression( ) as ASTNODE ptr
 		     AST_NODECLASS_DEREF, AST_NODECLASS_TYPEINI, _
 		     AST_NODECLASS_FIELD
 
+		case AST_NODECLASS_CALL
+			'' property get / function result: materialize the managed
+			'' string result in an owner temp so its data pointer is
+			'' valid for the rest of the statement
+			if( symbTypeIsManagedStringOwner( dtype ) = FALSE ) then
+				errReportEx( FB_ERRMSG_INVALIDDATATYPES, "for STRPTR" )
+			else
+				expr = hMaterializeStrDataPtr( expr )
+				if( expr = NULL ) then
+					'' error recovery: skip until ')' and fake a node
+					hSkipUntil( CHAR_RPRNT, TRUE )
+					return astNewCONSTi( 0 )
+				end if
+				dtype = astGetDataType( expr )
+			end if
+
 		case else
 			errReportEx( FB_ERRMSG_INVALIDDATATYPES, "for STRPTR" )
 		end select
 
-		'' varlen? do: *cast( [const] zstring const ptr ptr, @expr )
-		select case dtype
-		case FB_DATATYPE_STRING
+		'' Managed string owners expose descriptor.data; fixed/raw storage stays
+		'' address-based below.  Concrete CHAR/WCHAR result width remains separate.
+		if( symbTypeIsManagedStringOwner( dtype ) ) then
 			expr = astBuildStrPtr( expr )
+		else
+			select case dtype
+			case FB_DATATYPE_WCHAR
+				expr = astNewCONV( typeAddrOf( FB_DATATYPE_WCHAR ), _
+				                   NULL, _
+				                   astNewADDROF( expr ) )
 
-		case FB_DATATYPE_WCHAR
-			expr = astNewCONV( typeAddrOf( FB_DATATYPE_WCHAR ), _
-			                   NULL, _
-			                   astNewADDROF( expr ) )
-
-		'' anything else: do cast( zstring ptr, @expr )
-		case else
-			expr = astNewCONV( typeAddrOf( FB_DATATYPE_CHAR ), _
-			                   NULL, _
-			                   astNewADDROF( expr ) )
-		end select
+			'' anything else: do cast( zstring ptr, @expr )
+			case else
+				expr = astNewCONV( typeAddrOf( FB_DATATYPE_CHAR ), _
+				                   NULL, _
+				                   astNewADDROF( expr ) )
+			end select
+		end if
 
 		'' ')'
 		if( hMatch( CHAR_RPRNT ) = FALSE ) then

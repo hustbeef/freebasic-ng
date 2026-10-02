@@ -544,6 +544,84 @@ FBCALL int fb_PrintUsingWstr( int fnum, FB_WCHAR *s, int mask )
 	return fb_ErrorSetNum( FB_RTERROR_OK );
 }
 
+FBCALL int fb_PrintUsingDynWstr( int fnum, const FBWSTRING *ws, int mask )
+{
+    FB_PRINTUSGCTX *ctx;
+    FB_WCHAR buffer[BUFFERLEN+1];
+    const FB_WCHAR *s = (ws && ws->data) ? ws->data : _LC("");
+    int c, nc, strchars, doexit, i;
+    ssize_t length = ws ? ws->len : 0;
+
+    ctx = FB_TLSGETCTX( PRINTUSG );
+    if( ctx->chars == 0 ) {
+        ctx->ptr = ctx->fmtstr.data;
+        ctx->chars = FB_STRSIZE( &ctx->fmtstr );
+    }
+    fb_PrintUsingFmtStr( fnum );
+    strchars = -1;
+    if( ctx->ptr == NULL ) ctx->chars = 0;
+
+    while( ctx->chars > 0 ) {
+        c = *ctx->ptr;
+        nc = ctx->chars > 1 ? ctx->ptr[1] : -1;
+        doexit = TRUE;
+        switch( c ) {
+        case '!':
+            if( length >= 1 )
+                FB_PRINTWSTR_EX( FB_FILE_TO_HANDLE(fnum), s, 1, 0 );
+            else {
+                buffer[0] = L' ';
+                FB_PRINTWSTR_EX( FB_FILE_TO_HANDLE(fnum), buffer, 1, 0 );
+            }
+            ++ctx->ptr; --ctx->chars;
+            break;
+        case '&':
+            if( length > 0 )
+                FB_PRINTWSTR_EX( FB_FILE_TO_HANDLE(fnum), s, length, 0 );
+            ++ctx->ptr; --ctx->chars;
+            break;
+        case '\\':
+            if( (strchars != -1) || (nc == ' ') || (nc == '\\') ) {
+                if( strchars > 0 ) {
+                    ++strchars;
+                    if( length < strchars ) {
+                        if( length > 0 )
+                            FB_PRINTWSTR_EX( FB_FILE_TO_HANDLE(fnum), s, length, 0 );
+                        strchars -= (int)length;
+                        for( i = 0; i < strchars; i++ ) buffer[i] = L' ';
+                    } else {
+                        for( i = 0; i < strchars; i++ ) buffer[i] = s[i];
+                    }
+                    /* Historical fixed-field USING semantics turn embedded NUL
+                       inside the field into spaces rather than terminators. */
+                    for( i = 0; i < strchars; i++ )
+                        if( buffer[i] == 0 ) buffer[i] = L' ';
+                    if( strchars > 0 )
+                        FB_PRINTWSTR_EX( FB_FILE_TO_HANDLE(fnum), buffer, strchars, 0 );
+                    ++ctx->ptr; --ctx->chars;
+                } else {
+                    strchars = 1;
+                    doexit = FALSE;
+                }
+            }
+            break;
+        case ' ':
+            if( strchars > -1 ) { ++strchars; doexit = FALSE; }
+            break;
+        }
+        if( doexit ) break;
+        ++ctx->ptr; --ctx->chars;
+    }
+
+    fb_PrintUsingFmtStr( fnum );
+    if( mask & FB_PRINT_ISLAST ) {
+        if( mask & FB_PRINT_NEWLINE ) fb_PrintVoid( fnum, FB_PRINT_NEWLINE );
+        fb_StrDelete( &ctx->fmtstr );
+    }
+    fb_WstrDynDeleteTemp( ws );
+    return fb_ErrorSetNum( FB_RTERROR_OK );
+}
+
 static int hPrintNumber
 	(
 		int fnum,

@@ -1,4 +1,4 @@
-'' proc (SUB, FUNCTION, OPERATOR, PROPERTY, CTOR/DTOR) header and body parsing
+﻿'' proc (SUB, FUNCTION, OPERATOR, PROPERTY, CTOR/DTOR) header and body parsing
 ''
 '' chng: sep/2004 written [v1ctor]
 
@@ -384,6 +384,7 @@ sub cProcRetType _
 		byval pattrib as FB_PROCATTRIB, _
 		byval proc as FBSYMBOL ptr, _
 		byval is_proto as integer, _
+		byval op as AST_OP, _
 		byref dtype as integer, _
 		byref subtype as FBSYMBOL ptr _
 	)
@@ -407,10 +408,9 @@ sub cProcRetType _
 		options or= FB_SYMBTYPEOPT_ISBYREF
 	end if
 
-	' prototype? allow wstring
-	if( is_proto ) then
-		options and= not FB_SYMBTYPEOPT_CHECKSTRPTR
-	end if
+	'' Parse the complete result type once. Explicit suffixes are handled by
+	'' cSymbolType(); BYREF-result WString is an explicit role handled below.
+	options and= not FB_SYMBTYPEOPT_CHECKSTRPTR
 
 	if( cSymbolType( dtype, subtype, , , options ) = FALSE ) then
 		errReport( FB_ERRMSG_EXPECTEDIDENTIFIER )
@@ -419,15 +419,25 @@ sub cProcRetType _
 		subtype = NULL
 	else
 		'' check for invalid types
+		'' A bare WSTRING Function/Property result remains the managed
+		'' counted owner type even when returned BYREF.  Legacy UDT WSTRING
+		'' operator-cast results keep their historical raw-wide lvalue ABI;
+		'' other operators (such as Operator []) are ordinary owner-returning
+		'' procedures and must keep BYREF AS WSTRING aligned with BYREF AS STRING.
+		'' Other raw-wide APIs must spell the boundary explicitly as
+		'' WSTRING PTR / WSTRING*N storage.
+		if( ((pattrib and FB_PROCATTRIB_OPERATOR) <> 0) andalso _
+		    (op = AST_OP_CAST) andalso _
+		    ((pattrib and FB_PROCATTRIB_RETURNBYREF) <> 0) andalso _
+		    (typeGetDtAndPtrOnly( dtype ) = FB_DATATYPE_WSTRING) ) then
+			dtype = typeJoinDtOnly( dtype, FB_DATATYPE_WCHAR )
+			subtype = NULL
+		end if
+
 		select case( typeGetDtAndPtrOnly( dtype ) )
 		case FB_DATATYPE_WCHAR
-			'' WSTRING allowed only if BYREF, or is prototype
-			if( ((pattrib and FB_PROCATTRIB_RETURNBYREF) = 0) and (is_proto = FALSE) ) then
-				errReport( FB_ERRMSG_CANNOTRETURNFIXLENFROMFUNCTS )
-				'' error recovery: fake a type
-				dtype = FB_DATATYPE_STRING
-				subtype = NULL
-			end if
+			'' Explicit raw WSTRING*N/Ptr-style declarations may still yield
+			'' bare raw WCHAR; bare WSTRING owner results remain FB_DATATYPE_WSTRING.
 
 		case FB_DATATYPE_FIXSTR, FB_DATATYPE_CHAR
 			'' FIXSTR is never allowed; ZSTRING only if BYREF
@@ -1417,7 +1427,7 @@ function cProcHeader _
 			'' AS SymbolType
 			if( lexGetToken( ) = FB_TK_AS ) then
 				cProcRetType( attrib, pattrib, proc, ((options and FB_PROCOPT_ISPROTO) <> 0), _
-				              dtype, subtype )
+				              op, dtype, subtype )
 			else
 				errReport( FB_ERRMSG_EXPECTEDRESTYPE )
 				'' error recovery: fake a type
@@ -1450,7 +1460,7 @@ function cProcHeader _
 		'' (AS SymbolType)?
 		if( lexGetToken( ) = FB_TK_AS ) then
 			cProcRetType( attrib, pattrib, proc, ((options and FB_PROCOPT_ISPROTO) <> 0), _
-			              dtype, subtype )
+			              AST_OP_ADD, dtype, subtype )
 			is_indexed = (symbGetProcParams( proc ) = 1+1)
 			is_get = TRUE
 		else
@@ -1486,7 +1496,7 @@ function cProcHeader _
 				errReport( FB_ERRMSG_SYNTAXERROR )
 			end if
 			cProcRetType( attrib, pattrib, proc, ((options and FB_PROCOPT_ISPROTO) <> 0), _
-			              dtype, subtype )
+			              AST_OP_ADD, dtype, subtype )
 		else
 			if( tk = FB_TK_FUNCTION ) then
 				if( fbLangOptIsSet( FB_LANG_OPT_DEFTYPE ) ) then
@@ -1508,8 +1518,15 @@ function cProcHeader _
 
 	end select
 
-	'' Prototype?
-	if( options and FB_PROCOPT_ISPROTO ) then
+		'' WString descriptors are returned by value even with a ByRef qualifier.
+		if( (pattrib and FB_PROCATTRIB_RETURNBYREF) <> 0 ) then
+			if( typeGet( dtype ) = FB_DATATYPE_WSTRING ) then
+				pattrib and= not FB_PROCATTRIB_RETURNBYREF
+			end if
+		end if
+
+		'' Prototype?
+		if( options and FB_PROCOPT_ISPROTO ) then
 		select case( tk )
 		case FB_TK_CONSTRUCTOR, FB_TK_DESTRUCTOR
 			proc = symbAddCtor( proc, palias, attrib, pattrib, mode )

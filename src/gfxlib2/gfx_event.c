@@ -13,13 +13,6 @@ FBCALL int fb_GfxEvent(EVENT *event)
 		return FB_FALSE;
 	}
 
-#ifdef FB_NATIVE_COCOA
-    /* ScreenEvent loops commonly do no drawing.  Pump the AppKit queue here
-     * so input and close/focus events still reach FreeBASIC. */
-    if (__fb_gfx->driver->poll_events)
-        __fb_gfx->driver->poll_events();
-#endif
-
 	EVENT_LOCK();
 	if (__fb_gfx->event_head != __fb_gfx->event_tail) {
 		e = &__fb_gfx->event_queue[__fb_gfx->event_head];

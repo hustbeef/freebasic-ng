@@ -8,6 +8,7 @@
 #include once "rtl.bi"
 #include once "ast.bi"
 
+
 '':::::
 '' PrintStmt      =   (PRINT|'?') ('#' Expression ',')? (USING Expression{str} ';')? (Expression? ';'|"," )*
 ''
@@ -339,14 +340,14 @@ function cLineInputStmt _
 	end if
 
 	'' dest can't be a top-level const
-	if( typeIsConst( astGetFullType( dstexpr ) ) ) then
-		errReport( FB_ERRMSG_CONSTANTCANTBECHANGED )
-	elseif( astGetStrLitSymbol( dstexpr ) ) then
-		errReport( FB_ERRMSG_EXPECTEDIDENTIFIER, TRUE )
+	if( astReportIfNotWritableDestination( dstexpr ) ) then
+		'' keep parsing after common write-destination error
 	end if
 
-	'' string variable length unknown? allow specifying a max length
-	if( rtlCalcStrLen( dstexpr, astGetDataType( dstexpr ) ) = 0 ) then
+	'' string variable length unknown? allow specifying a max length. Native
+	'' counted WSTRING grows dynamically and needs no caller-supplied limit.
+	if( (astGetDataType( dstexpr ) <> FB_DATATYPE_WSTRING) andalso _
+	    (rtlCalcStrLen( dstexpr, astGetDataType( dstexpr ) ) = 0) ) then
 		'' ',' max_chars
 		if( hMatch( CHAR_COMMA ) ) then
 			maxlenexpr = cExpression( )
@@ -365,6 +366,9 @@ function cLineInputStmt _
 
 	case FB_DATATYPE_WCHAR
 		function = rtlFileLineInputWstr( isfile, filestrexpr, dstexpr, maxlenexpr, addquestion, addnewline )
+
+	case FB_DATATYPE_WSTRING
+		function = rtlFileLineInputDynWstr( isfile, filestrexpr, dstexpr, addquestion, addnewline )
 
 	'' not a string?
 	case else
@@ -444,11 +448,9 @@ function cInputStmt _
 
 		if( dstexpr <> NULL ) then
 			'' dest can't be a top-level const
-			if( typeIsConst( astGetFullType( dstexpr ) ) ) then
-				errReport( FB_ERRMSG_CONSTANTCANTBECHANGED )
-			elseif( astGetStrLitSymbol( dstexpr ) ) then
-				errReport( FB_ERRMSG_EXPECTEDIDENTIFIER, TRUE )
-			end if
+			if( astReportIfNotWritableDestination( dstexpr ) ) then
+		'' keep parsing after common write-destination error
+	end if
 		end if
 
 		if( hMatch( CHAR_COMMA ) ) then
@@ -556,6 +558,8 @@ private function hFilePut _
 	'' ',' source
 	hMatchCOMMA( )
 
+	'' PUT consumes the source AST type. Raw-vs-managed conversion is handled at
+	'' the file-I/O boundary, not while parsing the producer.
 	hMatchExpressionEx( srcexpr, FB_DATATYPE_INTEGER )
 
 	'' don't allow literal values, due the way "byref as
@@ -577,8 +581,8 @@ private function hFilePut _
 		assert( s )
 		assert( symbIsArray( s ) )
 		isarray = TRUE
-		'' don't allow var-len strings
-		if( symbGetType( s ) = FB_DATATYPE_STRING ) then
+		'' don't allow managed var-len string owners
+		if( symbTypeIsManagedStringOwner( symbGetType( s ) ) ) then
 			errReport( FB_ERRMSG_INVALIDDATATYPES, TRUE )
 			if( isfunc ) then
 				hSkipUntil( CHAR_RPRNT )
@@ -600,9 +604,8 @@ private function hFilePut _
 				elmexpr = NULL
 			end if
 		else
-			'' don't allow elements if source is string type
-			select case astGetDataType( srcexpr )
-			case FB_DATATYPE_STRING, FB_DATATYPE_FIXSTR
+			'' don't allow elements if source is a string-sequence storage value
+			if( symbTypeIsStringSequenceStorageValue( astGetDataType( srcexpr ) ) ) then
 				errReport( FB_ERRMSG_ELEMENTSMUSTBEEMPTY )
 				'' error recovery: skip elements
 				elmexpr = cExpression( )
@@ -610,12 +613,12 @@ private function hFilePut _
 					astDelTree( elmexpr )
 					elmexpr = NULL
 				end if
-			case else
+			else
 				elmexpr = cExpression( )
 				if( elmexpr = NULL ) then
 					errReport( FB_ERRMSG_EXPECTEDEXPRESSION )
 				end if
-			end select
+			end if
 		end if
 
 		'' elems has to be an integer or able to be converted
@@ -689,8 +692,8 @@ private function hFileGet _
 		assert( s )
 		assert( symbIsArray( s ) )
 		isarray = TRUE
-		'' don't allow var-len strings
-		if( symbGetType( s ) = FB_DATATYPE_STRING ) then
+		'' don't allow managed var-len string owners
+		if( symbTypeIsManagedStringOwner( symbGetType( s ) ) ) then
 			errReport( FB_ERRMSG_INVALIDDATATYPES, TRUE )
 			if( isfunc ) then
 				hSkipUntil( CHAR_RPRNT )
@@ -713,14 +716,13 @@ private function hFileGet _
 			end if
 		else
 			if( elmexpr ) then
-				'' don't allow elements if destine is string type
-				select case astGetDataType( dstexpr )
-				case FB_DATATYPE_STRING, FB_DATATYPE_FIXSTR
+				'' don't allow elements if destine is a string-sequence storage value
+				if( symbTypeIsStringSequenceStorageValue( astGetDataType( dstexpr ) ) ) then
 					errReport( FB_ERRMSG_ELEMENTSMUSTBEEMPTY )
 					'' error recovery: skip elements
 					astDelTree( elmexpr )
 					elmexpr = NULL
-				case else
+				else
 					'' elems has to be an integer or able to be converted
 					if( typeIsPtr( astGetDatatype( elmexpr ) ) ) then
 						errReportWarn( FB_WARNINGMSG_PASSINGPTRTOSCALAR )
@@ -731,7 +733,7 @@ private function hFileGet _
 							errReport( FB_ERRMSG_SYNTAXERROR, TRUE )
 						end if
 					end if
-				end select
+				end if
 			end if
 		end if
 	else
@@ -766,9 +768,12 @@ private function hFileGet _
 		iobexpr = NULL
 	end if
 
-	'' dest can't be a top-level const
-	if( typeIsConst( astGetFullType( dstexpr ) ) ) then
-		errReport( FB_ERRMSG_CONSTANTCANTBECHANGED )
+	'' GET mutates its destination.  Guard both top-level CONSTs and
+	'' string-literal-backed CONST storage before selecting the file GET rtlib
+	'' helper; otherwise managed String/WString CONST descriptors can be passed
+	'' to write paths and crash at runtime.
+	if( astReportIfNotWritableDestination( dstexpr ) ) then
+		'' keep parsing after common write-destination error
 	end if
 
 	'' iobytes can't be a top-level const

@@ -1,14 +1,3 @@
-/* Mach-O requires a pointer relocation to sit at a pointer-aligned offset.
-   The packed layout puts the embedded pointer at offset 2, which ld64 rejects
-   ("pointer not aligned ...", fatal on arm64), so Darwin uses the natural
-   layout.  The compiler emits the matching descriptor for Darwin targets, see
-   hCreateDataDesc() in src/compiler/ast-node-data.bas. */
-#ifdef HOST_DARWIN
-	#define FB_DATADESC_PACKED
-#else
-	#define FB_DATADESC_PACKED FBPACKED
-#endif
-
 struct _FB_DATADESC {
 	short 					len;
 	union {
@@ -17,7 +6,7 @@ struct _FB_DATADESC {
 		void   				*ofs;
 		struct _FB_DATADESC *next;
 	};
-} FB_DATADESC_PACKED;
+} FBPACKED;
 
 typedef struct _FB_DATADESC FB_DATADESC;
 
@@ -31,6 +20,7 @@ FBCALL void         fb_DataRestore      ( FB_DATADESC *labeladdr );
        void         fb_DataNext         ( void );
 FBCALL void         fb_DataReadStr      ( void *dst, ssize_t dst_size, int fillrem );
 FBCALL void         fb_DataReadWstr     ( FB_WCHAR *dst, ssize_t dst_size );
+FBCALL void         fb_DataReadDynWstr  ( FBWSTRING *dst );
 FBCALL void         fb_DataReadBool     ( char *dst );
 FBCALL void         fb_DataReadByte     ( char *dst );
 FBCALL void         fb_DataReadUByte    ( unsigned char *dst );

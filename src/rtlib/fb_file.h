@@ -231,6 +231,8 @@ FBCALL int          fb_FilePutStrLarge  ( int fnum, long long pos, void *str, ss
        int          fb_FilePutStrEx     ( FB_FILE *handle, fb_off_t pos, void *str, ssize_t str_len );
 FBCALL int          fb_FilePutArray     ( int fnum, int pos, FBARRAY *src );
 FBCALL int          fb_FilePutArrayLarge( int fnum, long long pos, FBARRAY *src );
+FBCALL int          fb_FilePutDynWstrArray     ( int fnum, int pos, FBARRAY *src );
+FBCALL int          fb_FilePutDynWstrArrayLarge( int fnum, long long pos, FBARRAY *src );
 
 FBCALL int          fb_FileGet          ( int fnum, int pos, void* value, size_t valuelen );
 FBCALL int          fb_FileGetLarge     ( int fnum, long long pos, void *dst, size_t chars );
@@ -244,8 +246,12 @@ FBCALL int          fb_FileGetStrLargeIOB( int fnum, long long pos, void *str, s
        int          fb_FileGetStrEx     ( FB_FILE *handle, fb_off_t pos, void *str, ssize_t str_len, size_t *bytesread );
 FBCALL int          fb_FileGetArray     ( int fnum, int pos, FBARRAY *dst );
 FBCALL int          fb_FileGetArrayLarge( int fnum, long long pos, FBARRAY *dst );
+FBCALL int          fb_FileGetDynWstrArray     ( int fnum, int pos, FBARRAY *dst );
+FBCALL int          fb_FileGetDynWstrArrayLarge( int fnum, long long pos, FBARRAY *dst );
 FBCALL int          fb_FileGetArrayIOB  ( int fnum, int pos, FBARRAY *dst, size_t *bytesread );
 FBCALL int          fb_FileGetArrayLargeIOB( int fnum, long long pos, FBARRAY *dst, size_t *bytesread );
+FBCALL int          fb_FileGetDynWstrArrayIOB  ( int fnum, int pos, FBARRAY *dst, size_t *bytesread );
+FBCALL int          fb_FileGetDynWstrArrayLargeIOB( int fnum, long long pos, FBARRAY *dst, size_t *bytesread );
 
 FBCALL int          fb_FileEof          ( int fnum );
        int          fb_FileEofEx        ( FB_FILE *handle );
@@ -277,8 +283,16 @@ FBCALL int          fb_FilePutBackWstr  ( int fnum, const FB_WCHAR *src, size_t 
 FBCALL int          fb_FileInput        ( int fnum );
 FBCALL FBSTRING    *fb_FileStrInput     ( ssize_t bytes, int fnum );
 FBCALL FB_WCHAR    *fb_FileWstrInput    ( ssize_t chars, int fnum );
+FBCALL FBWSTRING    *fb_FileDynWstrInput ( ssize_t chars, int fnum );
 FBCALL int          fb_FileLineInput    ( int fnum, void *dst, ssize_t dst_len, int fillrem );
 FBCALL int          fb_FileLineInputWstr( int fnum, FB_WCHAR *dst, ssize_t max_chars );
+FBCALL int          fb_FileLineInputDynWstr( int fnum, FBWSTRING *dst );
+FBCALL int          fb_FilePutDynWstr( int fnum, int pos, const FBWSTRING *src );
+FBCALL int          fb_FilePutDynWstrLarge( int fnum, long long pos, const FBWSTRING *src );
+FBCALL int          fb_FileGetDynWstr( int fnum, int pos, FBWSTRING *dst );
+FBCALL int          fb_FileGetDynWstrLarge( int fnum, long long pos, FBWSTRING *dst );
+FBCALL int          fb_FileGetDynWstrIOB( int fnum, int pos, FBWSTRING *dst, size_t *bytesread );
+FBCALL int          fb_FileGetDynWstrLargeIOB( int fnum, long long pos, FBWSTRING *dst, size_t *bytesread );
 
 FBCALL int          fb_InputBool        ( char *dst );
 FBCALL int          fb_InputByte        ( char *dst );
@@ -293,6 +307,7 @@ FBCALL int          fb_InputSingle      ( float *dst );
 FBCALL int          fb_InputDouble      ( double *dst );
 FBCALL int          fb_InputString      ( void *dst, ssize_t strlen, int fillrem );
 FBCALL int          fb_InputWstr        ( FB_WCHAR *str, ssize_t length );
+FBCALL int          fb_InputDynWstr     ( FBWSTRING *dst );
 
 FBCALL int          fb_FileLock         ( int fnum, unsigned int inipos, unsigned int endpos );
 FBCALL int          fb_FileLockLarge    ( int fnum, long long inipos, long long endpos );
@@ -313,7 +328,7 @@ FBCALL int          fb_FileUnlockLarge  ( int fnum, long long inipos, long long 
 FBCALL int          fb_SetPos           ( FB_FILE *handle, int line_length );
 
        int          fb_FileInputNextToken( char *buffer, ssize_t maxlen, int isstring, int *isfp );
-       void         fb_FileInputNextTokenWstr( FB_WCHAR *buffer, ssize_t max_chars, int is_string );
+       ssize_t      fb_FileInputNextTokenWstr( FB_WCHAR *buffer, ssize_t max_chars, int is_string );
 
 FBCALL FBSTRING    *fb_Dir              ( FBSTRING *filespec, int attrib, int *out_attrib );
 FBCALL FBSTRING    *fb_Dir64            ( FBSTRING *filespec, int attrib, long long *outattrib );

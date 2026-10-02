@@ -2,6 +2,10 @@
 
 #include "fb.h"
 
+#if defined HOST_WIN32
+	#include <windows.h>
+#endif
+
 /* dst_chars == room in dst buffer without null terminator. Thus, the dst buffer
    must be at least dst_chars+1 bytes.
    src must be null-terminated.
@@ -21,25 +25,28 @@ ssize_t fb_wstr_ConvToA(char *dst, ssize_t dst_chars, const FB_WCHAR *src)
 	memcpy(dst, src, chars + 1);
 	return chars;
 #else
-	/* plus the null-term */
-	ssize_t chars = wcstombs(dst, src, dst_chars + 1);
-
-	/* worked? */
-	if (chars >= 0) {
-		/* a null terminator won't be added if there was not
-		   enough space, so do it manually (this will cut off the last
-		   char, but what can you do) */
-		if (chars == (dst_chars + 1)) {
-			dst[dst_chars] = '\0';
-			return dst_chars - 1;
-		}
-		return chars;
-	}
-
-	/* wcstombs() failed; translate at least ASCII chars
-	   and write out '?' for the others */
 	char *origdst = dst;
 	char *dstlimit = dst + dst_chars;
+
+#if defined HOST_WIN32
+	/* Windows: convert through the ANSI code page, like the official
+	   rtlib.  The lexer stores narrow string literals in the ANSI code
+	   page too, so this keeps WSTRING -> STRING (and every filename
+	   derived from a WSTRING) consistent with them.  wcstombs() depends
+	   on the CRT locale, which defaults to "C" and mangles every
+	   non-ASCII unit into '?'. */
+	int wbytes = WideCharToMultiByte( CP_ACP, 0, src, -1, dst,
+	                                  (int)dst_chars + 1, NULL, NULL );
+	if( wbytes > 0 ) {
+		/* WideCharToMultiByte() counted the null terminator */
+		return (ssize_t)wbytes - 1;
+	}
+	/* conversion failed (insufficient room or best-fit loss); fall
+	   through to the ASCII + '?' translation below */
+#endif
+
+	/* translate at least ASCII chars and write out '?' for the others
+	   (also the truncation path, like wcstombs() does) */
 	while (dst < dstlimit) {
 #if defined HOST_WIN32
 		UTF_16 c = *src++;
@@ -57,7 +64,7 @@ ssize_t fb_wstr_ConvToA(char *dst, ssize_t dst_chars, const FB_WCHAR *src)
 		if (c > 127)
 			c = '?';
 #endif
-		*dst++ = c;
+		*dst++ = (char)c;
 	}
 	*dst = '\0';
 	return dst - origdst;

@@ -1844,6 +1844,236 @@ function symbIsString _
 
 end function
 
+
+'' Dynamic bare WSTRING mirrors STRING as a managed counted owner.  Do not fold
+'' it into legacy symbIsString(): many historical callers expect only raw/fixed
+'' string storage there.  New parser/AST boundary checks should use these
+'' explicit predicates instead of scattering FB_DATATYPE_WSTRING special cases.
+function symbTypeGetStringStorageClass _
+	( _
+		byval dtype as integer _
+	) as FB_STRINGSTORAGECLASS
+
+	if( typeIsPtr( dtype ) ) then
+		select case as const typeGetDtOnly( dtype )
+		case FB_DATATYPE_STRING, FB_DATATYPE_WSTRING, FB_DATATYPE_FIXSTR, _
+		     FB_DATATYPE_CHAR, FB_DATATYPE_WCHAR
+			function = FB_STRINGSTORAGE_RAW_POINTER_BOUNDARY
+		case else
+			function = FB_STRINGSTORAGE_NONE
+		end select
+		exit function
+	end if
+
+	select case as const typeGetDtAndPtrOnly( dtype )
+	case FB_DATATYPE_STRING, FB_DATATYPE_WSTRING
+		function = FB_STRINGSTORAGE_MANAGED_OWNER
+	case FB_DATATYPE_FIXSTR, FB_DATATYPE_CHAR, FB_DATATYPE_WCHAR
+		function = FB_STRINGSTORAGE_FIXED_VALUE
+	case else
+		function = FB_STRINGSTORAGE_NONE
+	end select
+
+end function
+
+function symbTypeGetStringWidth _
+	( _
+		byval dtype as integer _
+	) as FB_STRINGWIDTH
+
+	select case as const typeGetDtOnly( dtype )
+	case FB_DATATYPE_STRING, FB_DATATYPE_FIXSTR, FB_DATATYPE_CHAR
+		function = FB_STRINGWIDTH_NARROW
+	case FB_DATATYPE_WSTRING, FB_DATATYPE_WCHAR
+		function = FB_STRINGWIDTH_WIDE
+	case else
+		function = FB_STRINGWIDTH_NONE
+	end select
+
+end function
+
+function symbTypeIsManagedStringOwner _
+	( _
+		byval dtype as integer _
+	) as integer
+
+	function = (symbTypeGetStringStorageClass( dtype ) = _
+	            FB_STRINGSTORAGE_MANAGED_OWNER)
+
+end function
+
+function symbTypeIsFixedStringBuffer _
+	( _
+		byval dtype as integer _
+	) as integer
+
+	function = (symbTypeGetStringStorageClass( dtype ) = _
+	            FB_STRINGSTORAGE_FIXED_VALUE)
+
+end function
+
+function symbTypeIsStringStorageValue _
+	( _
+		byval dtype as integer _
+	) as integer
+
+	'' Expression/statement contexts that want a string value or storage slot,
+	'' not an ABI pointer boundary.  This is narrower than symbTypeIsStringLike():
+	'' WString Ptr/ZString Ptr are raw boundaries, but they are not LSET/RSET
+	'' string values and must not be accepted through value-only parser gates.
+	if( typeIsPtr( dtype ) ) then
+		function = FALSE
+		exit function
+	end if
+
+	function = symbTypeIsManagedStringOwner( dtype ) or _
+	           symbTypeIsFixedStringBuffer( dtype )
+
+end function
+
+function symbTypeIsStringSequenceStorageValue _
+	( _
+		byval dtype as integer _
+	) as integer
+
+	'' File record/binary string-sequence contexts need the subset of string
+	'' storage values that carry a sequence payload and therefore consume their
+	'' own length.  Do not include raw pointer boundaries, and keep single
+	'' CHAR/WCHAR scalar storage out of this predicate so legacy PUT/GET element
+	'' counts for scalar character cells keep working.
+	if( typeIsPtr( dtype ) ) then
+		function = FALSE
+		exit function
+	end if
+
+	select case as const typeGetDtAndPtrOnly( dtype )
+	case FB_DATATYPE_STRING, FB_DATATYPE_WSTRING, FB_DATATYPE_FIXSTR
+		function = TRUE
+	case else
+		function = FALSE
+	end select
+
+end function
+
+function symbTypeIsWstrRawBoundaryProducer _
+	( _
+		byval dtype as integer _
+	) as integer
+
+	'' WStr() has two distinct producer paths.  Legacy STRING/FIXSTR/CHAR/WCHAR
+	'' producers materialize through the historical NUL-terminated raw wide
+	'' boundary.  A dynamic WSTRING producer is already a managed counted wide
+	'' owner and must not be forced through that truncating boundary.
+	if( typeIsPtr( dtype ) ) then
+		function = FALSE
+		exit function
+	end if
+
+	select case as const typeGetDtAndPtrOnly( dtype )
+	case FB_DATATYPE_STRING, FB_DATATYPE_FIXSTR, FB_DATATYPE_CHAR, FB_DATATYPE_WCHAR
+		function = TRUE
+	case else
+		function = FALSE
+	end select
+
+end function
+
+function symbTypeUsesDynamicWstrOps _
+	( _
+		byval dtype as integer _
+	) as integer
+
+	'' Dynamic bare WSTRING is exactly the managed-owner + wide intersection.
+	'' Keep this operation-policy predicate as the public gate for optimizer/
+	'' lowering callers, but derive its type policy from the orthogonal storage
+	'' and width axes.  Raw WString Ptr is WIDE but not MANAGED_OWNER.
+	function = (symbTypeGetStringStorageClass( dtype ) = _
+	            FB_STRINGSTORAGE_MANAGED_OWNER) andalso _
+	           (symbTypeGetStringWidth( dtype ) = FB_STRINGWIDTH_WIDE)
+
+end function
+
+function symbTypeUsesLegacyStrConcatOps _
+	( _
+		byval dtype as integer _
+	) as integer
+
+	'' Contexts that lower through the historical rtlStrConcat()/rtlWstrConcat()
+	'' and hOptStrAssignment() implementation.  Do not include dynamic bare
+	'' WSTRING here: it owns a descriptor/buffer and uses the DWSTR helpers.
+	if( typeIsPtr( dtype ) ) then
+		function = FALSE
+		exit function
+	end if
+
+	select case as const typeGetDtAndPtrOnly( dtype )
+	case FB_DATATYPE_STRING, FB_DATATYPE_FIXSTR, FB_DATATYPE_WCHAR
+		function = TRUE
+	case else
+		function = FALSE
+	end select
+
+end function
+
+function symbTypeIsStringConversionSource _
+	( _
+		byval dtype as integer _
+	) as integer
+
+	'' String-to-number conversion accepts exactly the string storage-value
+	'' set: managed owners and fixed string/character values, but not raw
+	'' pointer boundaries.  Keep the context-specific name while deriving its
+	'' policy from the shared storage classifier.
+	function = symbTypeIsStringStorageValue( dtype )
+
+end function
+
+function symbTypeIsRawStringBoundary _
+	( _
+		byval dtype as integer _
+	) as integer
+
+	'' Raw string boundaries include both explicit string-family pointer
+	'' boundaries and fixed raw string/character storage values.
+	dim as FB_STRINGSTORAGECLASS storage = symbTypeGetStringStorageClass( dtype )
+	function = (storage = FB_STRINGSTORAGE_RAW_POINTER_BOUNDARY) or _
+	           (storage = FB_STRINGSTORAGE_FIXED_VALUE)
+
+end function
+
+function symbTypeIsStringLike _
+	( _
+		byval dtype as integer _
+	) as integer
+
+	function = (symbTypeGetStringStorageClass( dtype ) <> _
+	            FB_STRINGSTORAGE_NONE)
+
+end function
+
+function symbTypeCanBeRawMemorySlot _
+	( _
+		byval dtype as integer, _
+		byval subtype as FBSYMBOL ptr _
+	) as integer
+
+	'' PEEK/POKE raw-memory type slots may describe scalar storage, UDT storage,
+	'' or explicit pointers.  They must not describe managed string owners or
+	'' historical fixed-length string buffers as if those were simple scalars.
+	if( symbTypeIsManagedStringOwner( dtype ) ) then
+		function = FALSE
+		exit function
+	end if
+
+	select case as const typeGetDtAndPtrOnly( dtype )
+	case FB_DATATYPE_VOID, FB_DATATYPE_FIXSTR
+		function = FALSE
+	case else
+		function = TRUE
+	end select
+
+end function
+
 function symbGetStrLength( byval sym as FBSYMBOL ptr ) as longint
 	assert( symbIsString( symbGetType( sym ) ) )
 	select case as const symbGetType( sym )

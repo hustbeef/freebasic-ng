@@ -2,44 +2,11 @@
 
 #include "fb.h"
 
-/* Convert a NUL-terminated multibyte buffer without writing a terminator past
-   the caller-provided destination. fb_wstr_ConvFromA() deliberately requires
-   one extra wchar slot, but pfnReadWstr() receives exactly the requested
-   number of wchar slots. */
-static size_t hConvertFromA( FB_WCHAR *dst, size_t dst_chars, const char *src )
-{
-#if defined( DISABLE_WCHAR )
-    size_t chars = strlen( src );
-
-    if( chars > dst_chars )
-        chars = dst_chars;
-    memcpy( dst, src, chars );
-    return chars;
-#else
-    size_t chars = mbstowcs( dst, src, dst_chars );
-
-    if( chars != (size_t)-1 )
-        return chars;
-
-    /* Match fb_wstr_ConvFromA()'s conservative fallback for an invalid
-       multibyte sequence, while preserving the destination bound. */
-    chars = 0;
-    while( (chars < dst_chars) && (src[chars] != '\0') )
-    {
-        unsigned char c = src[chars];
-        dst[chars] = (c > 127 ? _LC('?') : c);
-        ++chars;
-    }
-    return chars;
-#endif
-}
-
 int fb_DevFileReadWstr( FB_FILE *handle, FB_WCHAR *dst, size_t *pchars )
 {
     FILE *fp;
-    size_t chars, requested_chars;
+    size_t chars;
     char *buffer;
-    int heap_buffer;
 
     FB_LOCK();
 
@@ -58,11 +25,9 @@ int fb_DevFileReadWstr( FB_FILE *handle, FB_WCHAR *dst, size_t *pchars )
         }
     }
 
-    requested_chars = *pchars;
-    chars = requested_chars;
-    heap_buffer = (chars >= FB_LOCALBUFF_MAXLEN);
+    chars = *pchars;
 
-	if( !heap_buffer )
+	if( chars < FB_LOCALBUFF_MAXLEN )
 	{
 		buffer = alloca( chars + 1 );
 		/* note: if out of memory on alloca, it's a stack exception */
@@ -81,17 +46,16 @@ int fb_DevFileReadWstr( FB_FILE *handle, FB_WCHAR *dst, size_t *pchars )
 	chars = fread( buffer, 1, chars, fp );
 	buffer[chars] = '\0';
 
-    /* Do not use fb_wstr_ConvFromA() here: it always writes a terminator,
-       while dst has exactly requested_chars slots. */
-    chars = hConvertFromA( dst, requested_chars, buffer );
+	/* convert to wchar, file should be opened with the ENCODING option
+	   to allow UTF characters to be read */
+	fb_wstr_ConvFromA( dst, chars, buffer );
 
-	if( heap_buffer )
+	if( *pchars >= FB_LOCALBUFF_MAXLEN )
 		free( buffer );
 
 	/* fill with nulls if at eof */
-    if( chars != requested_chars )
-        memset( (void *)&dst[chars], 0,
-                (requested_chars - chars) * sizeof( FB_WCHAR ) );
+	if( chars != *pchars )
+        memset( (void *)&dst[chars], 0, (*pchars - chars) * sizeof( FB_WCHAR ) );
 
     *pchars = chars;
 

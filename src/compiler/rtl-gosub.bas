@@ -95,25 +95,6 @@
 		) _
 	 }
 
-	'' Windows ARM64 __mingw_setjmp()
-	dim shared as FB_RTL_PROCDEF funcdata1_winarm64( 0 to ... ) = _
-	{ _
-		/' function fb_SetJmp cdecl( byval buf as any ptr ) as long '/ _
-		( _
-			@FB_RTL_SETJMP, @"__mingw_setjmp", _
-			FB_DATATYPE_LONG, FB_FUNCMODE_CDECL, _
-			NULL, FB_RTL_OPT_NONE, _
-			1, _
-			{ _
-				( typeAddrOf( FB_DATATYPE_VOID ), FB_PARAMMODE_BYVAL, FALSE ) _
-			} _
-		), _
-		/' EOL '/ _
-		( _
-			NULL _
-		) _
-	 }
-
 	'' Linux/DOS setjmp()
 	dim shared as FB_RTL_PROCDEF funcdata2( 0 to ... ) = _
 	{ _
@@ -136,26 +117,21 @@
 '':::::
 sub rtlGosubModInit( )
 
-	'' Nonlocal ON ERROR transfers use the same target-specific setjmp entry
-	'' point as the setjmp GOSUB implementation, even in dialects that do not
-	'' permit GOSUB itself.
-	if( env.clopt.target = FB_COMPTARGET_WIN32 ) then
-		'' Windows x86_64 uses MinGW's two-argument _setjmp().  Windows
-		'' AArch64 exposes the one-argument __mingw_setjmp() helper.
-		if( fbGetCpuFamily() = FB_CPUFAMILY_X86_64 ) then
-			rtlAddIntrinsicProcs( @funcdata1_win64(0) )
-		elseif( fbGetCpuFamily() = FB_CPUFAMILY_AARCH64 ) then
-			rtlAddIntrinsicProcs( @funcdata1_winarm64(0) )
-		else
-			rtlAddIntrinsicProcs( @funcdata1_win32(0) )
-		end if
-	else
-		rtlAddIntrinsicProcs( @funcdata2(0) )
-	end if
-
 	'' No need to add these procs if GOSUB isn't allowed in the dialect...
 	if( fbLangOptIsSet( FB_LANG_OPT_GOSUB ) ) then
+
 		rtlAddIntrinsicProcs( @funcdata(0) )
+
+		if( env.clopt.target = FB_COMPTARGET_WIN32 ) then
+			if( fbIs64bit() ) then
+				rtlAddIntrinsicProcs( @funcdata1_win64(0) )
+			else
+				rtlAddIntrinsicProcs( @funcdata1_win32(0) )
+			end if
+		else
+			rtlAddIntrinsicProcs( @funcdata2(0) )
+		end if
+
 	end if
 
 end sub
@@ -271,10 +247,11 @@ function rtlSetJmp _
 	'' second parameter is for an exception record?  The documentation on this
 	'' is scarce.
 
-	if( (env.clopt.target = FB_COMPTARGET_WIN32) and _
-	    (fbGetCpuFamily() = FB_CPUFAMILY_X86_64) ) then
-		if( astNewARG( proc, astNewCONSTi( 0 ) ) = NULL ) then
-			exit function
+	if( env.clopt.target = FB_COMPTARGET_WIN32 ) then
+		if( fbIs64bit() ) then
+			if( astNewARG( proc, astNewCONSTi( 0 ) ) = NULL ) then
+				exit function
+			end if
 		end if
 	end if
 

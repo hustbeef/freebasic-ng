@@ -11,6 +11,12 @@
 #include once "rtl.bi"
 #include once "ast.bi"
 
+extern "c"
+	declare function printf(byval as zstring ptr, ...) as integer
+end extern
+
+#define DBG_ARGLOG 0
+
 private function hAllocTempArrayDesc _
 	( _
 		byval array as FBSYMBOL ptr, _
@@ -38,7 +44,8 @@ private function hAddToCopyBackList _
 	( _
 		byval parent as ASTNODE ptr, _
 		byval temp as FBSYMBOL ptr, _
-		byval n as ASTNODE ptr _
+		byval n as ASTNODE ptr, _
+		byval src_len as longint = 0 _
 	) as AST_TMPSTRLIST_ITEM ptr
 
 	dim as AST_TMPSTRLIST_ITEM ptr t = any
@@ -50,6 +57,7 @@ private function hAddToCopyBackList _
 
 	t->sym = temp
 	t->srctree = astOptimizeTree( astCloneTree( n ) )
+	t->src_len = src_len
 
 	function = t
 end function
@@ -62,6 +70,7 @@ private function hAllocTempString _
 	) as ASTNODE ptr
 
 	dim as FBSYMBOL ptr temp = any
+	dim as ASTNODE ptr t = any
 
 	temp = symbAddTempVar( FB_DATATYPE_STRING )
 	astDtorListAdd( temp )
@@ -71,15 +80,103 @@ private function hAllocTempString _
 	end if
 
 	'' temp string = src string
-	function = astNewLINK( _
+	t = astNewLINK( _
 		astNewLINK( _
 			astBuildTempVarClear( temp ), _
 			rtlStrAssign( astNewVAR( temp ), n ), _
 			AST_LINK_RETURN_NONE ), _
 		astNewVAR( temp ), _
 		AST_LINK_RETURN_RIGHT )
+
+	function = t
 end function
 
+private function hAllocTempDynWstr _
+	( _
+		byval parent as ASTNODE ptr, _
+		byval n as ASTNODE ptr, _
+		byval copyback as integer = FALSE _
+	) as ASTNODE ptr
+
+	dim as FBSYMBOL ptr temp = symbAddTempVar( FB_DATATYPE_WSTRING )
+	dim as ASTNODE ptr refini = NULL, assign = any, result = any
+	dim as integer src_dtype = astGetDataType( n )
+	dim as longint src_len = rtlCalcStrLen( n, src_dtype )
+	astDtorListAdd( temp )
+
+	'' Reverse STRING/FIXSTR/ZSTRING -> BYREF native WSTRING needs one stable
+	'' writable lvalue for both copy-in and post-call copy-back.  astMakeRef()
+	'' rewrites n to reference the captured address while refini evaluates the
+	'' original address expression exactly once.
+	if( copyback ) then
+		refini = astMakeRef( n )
+		hAddToCopyBackList( parent, temp, n, src_len )
+	end if
+
+	'' BYVAL native-WSTRING parameters are passed as an implicit descriptor
+	'' reference, just like STRING, but the referenced descriptor must be an
+	'' independent deep copy owned by the caller for the duration of the call.
+	'' Keep the pre-astMakeRef() source-size encoding so FIXSTR input remains
+	'' length-aware instead of degenerating into an unknown ZSTRING pointer.
+	assign = rtlDynWstrAssign( astNewVAR( temp ), n, src_len, TRUE )
+	result = astNewLINK( assign, astNewVAR( temp ), AST_LINK_RETURN_RIGHT )
+	if( refini <> NULL ) then
+		result = astNewLINK( refini, result, AST_LINK_RETURN_RIGHT )
+	end if
+	function = result
+end function
+
+private function hAllocCrossManagedStringTemp _
+	( _
+		byval parent as ASTNODE ptr, _
+		byval n as ASTNODE ptr, _
+		byval target_dtype as integer, _
+		byval copyback as integer _
+	) as ASTNODE ptr
+
+	dim as FBSYMBOL ptr temp = symbAddTempVar( target_dtype )
+	dim as ASTNODE ptr refini = NULL, assign = NULL, result = NULL
+	dim as longint src_len = rtlCalcStrLen( n, astGetDataType( n ) )
+	astDtorListAdd( temp )
+
+	'' A cross-owner BYREF bridge must evaluate the original lvalue exactly once:
+	'' copy-in and copy-back both reference the stable address captured here.
+	if( copyback ) then
+		refini = astMakeRef( n )
+		hAddToCopyBackList( parent, temp, n, src_len )
+	end if
+
+	select case target_dtype
+	case FB_DATATYPE_STRING
+		'' Managed WSTRING -> managed STRING.  Keep the width conversion in the
+		'' explicit owner bridge; the STRING assignment path itself remains native.
+		dim as ASTNODE ptr converted = rtlDynWstrToA( n )
+		assign = astNewLINK( _
+			astBuildTempVarClear( temp ), _
+			rtlStrAssign( astNewVAR( temp ), converted ), _
+			AST_LINK_RETURN_NONE )
+
+	case FB_DATATYPE_WSTRING
+		'' Managed STRING -> managed WSTRING.  The destination is a fresh owner,
+		'' so use the normal managed initialization path.
+		assign = rtlDynWstrAssign( astNewVAR( temp ), n, src_len, TRUE )
+
+	case else
+		assert( FALSE )
+		return NULL
+	end select
+
+	result = astNewLINK( assign, astNewVAR( temp ), AST_LINK_RETURN_RIGHT )
+	if( refini <> NULL ) then
+		result = astNewLINK( refini, result, AST_LINK_RETURN_RIGHT )
+	end if
+	function = result
+end function
+
+'':::::
+'' Historical raw-WSTRING pointer helper.  It is used only after parameter
+'' lowering has selected an explicit WString*N/WString Ptr boundary.
+'':::::
 private function hAllocTempWstrPtr _
 	( _
 		byval parent as ASTNODE ptr, _
@@ -218,12 +315,88 @@ private function hCheckArgForStringParam _
 	function = hAllocTempString( parent, arg, copyback )
 end function
 
+private function hCheckArgForDynWstrParam _
+	( _
+		byval parent as ASTNODE ptr, _
+		byval param as FBSYMBOL ptr, _
+		byval arg as ASTNODE ptr _
+	) as ASTNODE ptr
+
+	dim as integer argdtype = astGetDatatype( arg )
+	dim as integer copyback = FALSE
+
+#if DBG_ARGLOG
+	printf( "[DBG] ArgForDynWstr: isrtl=%d byref=%d dtype=%d iscall=%d\n", _
+		CLng( parent->call.isrtl ), CLng( symbGetParamMode( param ) ), CLng( argdtype ), CLng( astIsCALL( arg ) ) )
+#endif
+
+	'' Mirror hCheckArgForStringParam(): an rtlib BYREF managed-string consumer
+	'' may consume a temporary function result directly - hand rtlib consumers
+	'' the producer as-is, whether it is a plain CALL or an rtl LINK(prep,
+	'' proc, RETURN_RIGHT) chain.  This also terminates the recursion from
+	'' hAllocTempDynWstr() below, whose inner DWSTRINIT call passes the
+	'' producer back through here.
+	if( parent->call.isrtl andalso _
+	    (symbGetParamMode( param ) = FB_PARAMMODE_BYREF) ) then
+		if( argdtype = FB_DATATYPE_WSTRING ) then
+			assert( symbGetType( param ) = FB_DATATYPE_WSTRING )
+			return arg
+		end if
+	end if
+
+	if( symbGetParamMode( param ) = FB_PARAMMODE_BYREF ) then
+		select case argdtype
+		case FB_DATATYPE_WSTRING
+			'' A persistent managed owner preserves true BYREF aliasing.  Function
+			'' results are disposable values, so materialize them in a caller-owned
+			'' descriptor before a user procedure can mutate the argument.
+			'' rtl helpers may hand back the value producer wrapped as LINK(prep,
+			'' proc, RETURN_RIGHT) chains (e.g. Trim with an Any pattern).  Unwrap
+			'' such chains: a CALL tail means the value is a consumable pool-temp
+			'' result descriptor, not a persistent owner.  Passing ADDROF of it
+			'' would expose the hidden temporary (fb_wtmpds pool entry) to the
+			'' callee, which rtlib helpers (fb_WstrDynLen etc.) free/reset on
+			'' first use, corrupting any later reads inside the callee.
+			if( astIsCALL( arg ) = FALSE ) then
+				dim as ASTNODE ptr t = arg
+				while( t->class = AST_NODECLASS_LINK andalso t->r <> NULL andalso t->link.ret = AST_LINK_RETURN_RIGHT )
+					t = t->r
+				wend
+				if( t->class <> AST_NODECLASS_CALL ) then
+					return arg
+				end if
+			end if
+
+		case FB_DATATYPE_FIXSTR
+			copyback = TRUE
+
+		case FB_DATATYPE_CHAR, FB_DATATYPE_WCHAR
+			'' Raw/fixed string buffers can be copied back only when the original
+			'' expression is a writable object with known storage, matching STRING's
+			'' fixed/ZSTRING BYREF bridge rule.
+			copyback = (astGetStrLitSymbol( arg ) = NULL) and _
+				(not astIsDEREF( arg )) and _
+				(not astIsCALL( arg ))
+
+		end select
+	end if
+
+	function = hAllocTempDynWstr( parent, arg, copyback )
+end function
+
+'':::::
+'' Raw z/wstring pointer adaptation.  Managed STRING/WSTRING ownership has
+'' already been resolved before entering this explicit raw boundary helper.
+''
+'':::::
 private sub hStrArgToStrPtrParam _
 	( _
 		byval parent as ASTNODE ptr, _
 		byval n as ASTNODE ptr, _
 		byval checkrtl as integer _
 	)
+
+	dim as ASTNODE ptr t = any
 
 	if( checkrtl = FALSE ) then
 		'' rtl? don't mess..
@@ -242,6 +415,18 @@ private sub hStrArgToStrPtrParam _
 
 		'' *cast( [const] zstring const ptr ptr, @expr )
 		'' Don't worry about preserving CONST bits, astNewARG() should have checked.
+		n->l = astBuildStrPtr( n->l )
+
+	case FB_DATATYPE_WSTRING
+		'' Managed WSTRING -> explicit raw WString Ptr boundary mirrors
+		'' STRING -> ZString Ptr: expose the owner data pointer directly when
+		'' the argument is a stable owner lvalue.  Non-addressable producers
+		'' are first captured in an owner temp so the raw pointer remains valid
+		'' for the duration of the call.
+		t = astSkipNoConvCAST( n->l )
+		if( (astCanTakeAddrOf( t ) = FALSE) or astIsCALL( t ) ) then
+			n->l = hAllocTempDynWstr( parent, n->l, FALSE )
+		end if
 		n->l = astBuildStrPtr( n->l )
 
 	case FB_DATATYPE_FIXSTR
@@ -272,6 +457,41 @@ sub hBuildByrefArg( byval param as FBSYMBOL ptr, byval n as ASTNODE ptr )
 	n->arg.mode = FB_PARAMMODE_BYVAL
 end sub
 
+private function hCheckCrossManagedStringParam _
+	( _
+		byval parent as ASTNODE ptr, _
+		byval param as FBSYMBOL ptr, _
+		byval n as ASTNODE ptr, _
+		byval target_dtype as integer _
+	) as integer
+
+	dim as integer src_dtype = astGetDatatype( n->l )
+	dim as integer copyback = FALSE
+
+	assert( (target_dtype = FB_DATATYPE_STRING) or (target_dtype = FB_DATATYPE_WSTRING) )
+	assert( (src_dtype = FB_DATATYPE_STRING) or (src_dtype = FB_DATATYPE_WSTRING) )
+	assert( src_dtype <> target_dtype )
+
+	'' STRING <-> WSTRING is an owner-to-owner conversion, not a raw boundary.
+	'' For BYREF, mutations copy back only when the original argument is a stable,
+	'' writable owner lvalue.  Function results are disposable values.
+	if( symbGetParamMode( param ) = FB_PARAMMODE_BYREF ) then
+		copyback = (not astIsCALL( n->l )) andalso _
+			astCanTakeAddrOf( astSkipNoConvCAST( n->l ) )
+	end if
+
+	n->l = hAllocCrossManagedStringTemp( parent, n->l, target_dtype, copyback )
+	if( n->l = NULL ) then return FALSE
+
+	select case symbGetParamMode( param )
+	case FB_PARAMMODE_BYREF, FB_PARAMMODE_BYVAL
+		hBuildByrefArg( param, n )
+	end select
+
+	function = TRUE
+end function
+
+
 private sub hCheckByrefParam _
 	( _
 		byval proc as FBSYMBOL ptr, _
@@ -292,14 +512,44 @@ private sub hCheckByrefParam _
 	'' allows us to fix the fbc crash as reported in sf.net bug #910
 	t = astSkipConstCASTs( n->l )
 
-	'' If it's a CALL returning a STRING, it actually returns a pointer,
-	'' which can be passed to the BYREF param as-is
+	'' If it's a CALL returning a managed/fixed string value, it already
+	'' evaluates to the implicit pointer representation expected by BYREF.
 	if( astIsCALL( t ) ) then
 		select case as const( astGetDataType( t ) )
-		case FB_DATATYPE_STRING, FB_DATATYPE_FIXSTR, _
+		case FB_DATATYPE_STRING, FB_DATATYPE_WSTRING, FB_DATATYPE_FIXSTR, _
 			FB_DATATYPE_CHAR, FB_DATATYPE_WCHAR
+#if DBG_ARGLOG
+			printf( "[DBG] hCheckByrefParam CALL-passthrough dtype=%d\n", CLng( astGetDataType( t ) ) )
+#endif
 			exit sub
 		end select
+	end if
+
+	'' If a managed WSTRING producer is not a plain CALL node, the generic
+	'' scalar temp-var path below is not a valid way to make it addressable.
+	'' Build a normal owner temp instead, then pass the descriptor address to
+	'' the opaque BYREF AS ANY boundary.  This mirrors STRING-family result
+	'' handling while keeping opaque calls outside the temp-result consumption
+	'' protocol.
+	if( is_byref_void andalso _
+	    (astGetDataType( t ) = FB_DATATYPE_WSTRING) andalso _
+	    (astCanTakeAddrOf( t ) = FALSE) ) then
+		dim as FBSYMBOL ptr temp = symbAddTempVar( FB_DATATYPE_WSTRING )
+		dim as longint src_len = rtlCalcStrLen( n->l, astGetDataType( n->l ) )
+		dim as ASTNODE ptr assign = any
+
+		astDtorListAdd( temp )
+		assign = rtlDynWstrAssign( astNewVAR( temp ), n->l, src_len, TRUE )
+		if( assign = NULL ) then
+			n->l = NULL
+			exit sub
+		end if
+
+		n->l = astNewLINK( assign, astNewADDROF( astNewVAR( temp ) ), AST_LINK_RETURN_RIGHT )
+		n->l = astNewCONV( typeAddrOf( symbGetFullType( param ) ), symbGetSubtype( param ), n->l, AST_CONVOPT_DONTWARNCONST )
+		assert( n->l )
+		n->arg.mode = FB_PARAMMODE_BYVAL
+		exit sub
 	end if
 
 	'' If given a variable/object, we can just take its address and pass
@@ -507,7 +757,19 @@ private function hCheckVarargParam _
 	select case as const typeGetClass( arg_dtype )
 	'' var-len string? check..
 	case FB_DATACLASS_STRING
-		hStrArgToStrPtrParam( parent, n, FALSE )
+		if( arg_dtype = FB_DATATYPE_WSTRING ) then
+			'' C varargs historically receive a character-data pointer for
+			'' string-family arguments, never the descriptor aggregate.
+			'' Preserve native temporary ownership across the call, then expose
+			'' descriptor.data exactly like STRPTR(native WSTRING).
+			if( astCanTakeAddrOf( astSkipNoConvCAST( n->l ) ) = FALSE or _
+			    astIsCALL( astSkipNoConvCAST( n->l ) ) ) then
+				n->l = hAllocTempDynWstr( parent, n->l )
+			end if
+			n->l = astBuildStrPtr( n->l )
+		else
+			hStrArgToStrPtrParam( parent, n, FALSE )
+		end if
 
 	case FB_DATACLASS_INTEGER
 		select case arg_dtype
@@ -565,6 +827,46 @@ private sub hCheckVoidParam _
 	hCheckByrefParam( parent->sym, param, n, TRUE )
 end sub
 
+'' Managed WSTRING parameter handling mirrors hCheckStrParam().  The only
+'' WSTRING-specific work is element-width conversion at the managed/raw
+'' boundary; ownership/copyback/BYREF-vs-BYVAL rules are parallel to STRING.
+private function hCheckDynWstrParam _
+	( _
+		byval parent as ASTNODE ptr, _
+		byval param as FBSYMBOL ptr, _
+		byval n as ASTNODE ptr _
+	) as integer
+
+	select case as const( astGetDatatype( n->l ) )
+	case FB_DATATYPE_WSTRING, FB_DATATYPE_FIXSTR, FB_DATATYPE_CHAR, FB_DATATYPE_WCHAR
+	case else
+		errReport( FB_ERRMSG_PARAMTYPEMISMATCHAT )
+		return FALSE
+	end select
+
+	n->l = hCheckArgForDynWstrParam( parent, param, n->l )
+	if( n->l = NULL ) then return FALSE
+
+	select case symbGetParamMode( param )
+	case FB_PARAMMODE_BYREF
+		'' A direct rtlib function-result CALL already evaluates to FBWSTRING*.
+		'' Every other expression is an owner/temporary lvalue and needs ADDROF.
+#if DBG_ARGLOG
+		printf( "[DBG] hCheckDynWstrParam BYREF iscall=%d\n", CLng( astIsCALL( n->l ) ) )
+#endif
+		if( astIsCALL( n->l ) = FALSE ) then
+			hBuildByrefArg( param, n )
+		end if
+	case FB_PARAMMODE_BYVAL
+		'' Non-trivial managed strings are passed through an implicit descriptor
+		'' reference to the caller-owned value copy, exactly like STRING.
+		hBuildByrefArg( param, n )
+	end select
+
+	function = TRUE
+end function
+
+'':::::
 private function hCheckStrParam _
 	( _
 		byval parent as ASTNODE ptr, _
@@ -578,7 +880,7 @@ private function hCheckStrParam _
 	select case as const( argdtype )
 	case FB_DATATYPE_STRING, FB_DATATYPE_FIXSTR
 
-	'' a z|wstring?
+	'' a z|legacy-wstring?
 	case FB_DATATYPE_CHAR, FB_DATATYPE_WCHAR
 
 	'' not a string?
@@ -817,7 +1119,7 @@ private function hCheckParam _
 
 	'' strip the non-type flags
 	param_dtype = symbGetType( param )
-	arg_dtype   = astGetDatatype( n->l )
+	arg_dtype = astGetDatatype( n->l )
 
 	select case symbGetParamMode( param )
 	'' by descriptor?
@@ -842,12 +1144,18 @@ private function hCheckParam _
 
 		'' passing a BYVAL ptr to an BYREF arg?
 		if( n->arg.mode = FB_PARAMMODE_BYVAL ) then
-			if( (typeGetClass( arg_dtype ) <> FB_DATACLASS_INTEGER) or _
-				(typeGetSize( arg_dtype ) <> env.pointersize) ) then
-				errReport( FB_ERRMSG_PARAMTYPEMISMATCHAT )
-				exit function
+			'' Managed STRING/WSTRING parameters use descriptor ownership rules and
+			'' must reach their dedicated managed-string handlers below.  Other BYREF
+			'' parameters retain the generic pointer-sized BYVAL shortcut.
+			if( (param_dtype <> FB_DATATYPE_STRING) and _
+			    (param_dtype <> FB_DATATYPE_WSTRING) ) then
+				if( (typeGetClass( arg_dtype ) <> FB_DATACLASS_INTEGER) or _
+					(typeGetSize( arg_dtype ) <> env.pointersize) ) then
+					errReport( FB_ERRMSG_PARAMTYPEMISMATCHAT )
+					exit function
+				end if
+				return TRUE
 			end if
-			return TRUE
 		end if
 
 		'' Passing a bitfield arg to a byref param? Can't be allowed,
@@ -890,6 +1198,13 @@ private function hCheckParam _
 				n->l = astBuildCall( proc, n->l )
 				rec_cnt -= 1
 
+				'' astBuildCall() can fail after reporting a semantic error
+				'' (for example, invoking a non-CONST Cast() on a CONST UDT).
+				'' Do not dereference the failed call expression during error recovery.
+				if( n->l = NULL ) then
+					exit function
+				end if
+
 				arg_dtype = astGetDatatype( n->l )
 			end if
 		end if
@@ -898,8 +1213,18 @@ private function hCheckParam _
 	assert( param_dtype <> FB_DATATYPE_FIXSTR )
 
 	select case( param_dtype )
+	'' managed WSTRING parameter: same ownership model as STRING
+	case FB_DATATYPE_WSTRING
+		if( arg_dtype = FB_DATATYPE_STRING ) then
+			return hCheckCrossManagedStringParam( parent, param, n, FB_DATATYPE_WSTRING )
+		end if
+		return hCheckDynWstrParam( parent, param, n )
+
 	'' string param?
 	case FB_DATATYPE_STRING
+		if( arg_dtype = FB_DATATYPE_WSTRING ) then
+			return hCheckCrossManagedStringParam( parent, param, n, FB_DATATYPE_STRING )
+		end if
 		return hCheckStrParam( parent, param, n )
 
 	'' z/wstring param?
@@ -911,8 +1236,9 @@ private function hCheckParam _
 		'' string just fine)
 		select case( arg_dtype )
 		case FB_DATATYPE_STRING, FB_DATATYPE_FIXSTR, _
-			FB_DATATYPE_CHAR, FB_DATATYPE_WCHAR
-			'' Rest will be handled below
+			FB_DATATYPE_CHAR, FB_DATATYPE_WCHAR, FB_DATATYPE_WSTRING
+			'' Rest will be handled below.  A managed bare WString crossing into
+			'' a raw WSTRING parameter is materialized by the raw-boundary adapter.
 		case else
 			errReport( FB_ERRMSG_PARAMTYPEMISMATCHAT )
 			exit function
@@ -926,14 +1252,14 @@ private function hCheckParam _
 	select case as const arg_dtype
 	'' string arg? check z- and w-string ptr params
 	case FB_DATATYPE_STRING, FB_DATATYPE_FIXSTR, _
-		FB_DATATYPE_CHAR, FB_DATATYPE_WCHAR
+		FB_DATATYPE_CHAR, FB_DATATYPE_WSTRING
 
 		select case param_dtype
 		'' zstring ptr / zstring param?
 		case typeAddrOf( FB_DATATYPE_CHAR ), FB_DATATYPE_CHAR
 			select case arg_dtype
-			case FB_DATATYPE_WCHAR
-				'' if it's a wstring param, convert..
+			case FB_DATATYPE_WSTRING
+				'' Wide string family crossing into a raw ZSTRING boundary.
 				n->l = rtlToStr( n->l, FALSE )
 			case FB_DATATYPE_FIXSTR
 				'' if it's a fixed length string, make a copy
@@ -944,9 +1270,12 @@ private function hCheckParam _
 
 		'' wstring ptr / wstring?
 		case typeAddrOf( FB_DATATYPE_WCHAR ), FB_DATATYPE_WCHAR
-			'' if it's not a wstring param, convert..
-			if( arg_dtype <> FB_DATATYPE_WCHAR ) then
-				n->l = rtlToWstr( n->l )
+			'' Managed bare WSTRING crossing to a same-width raw pointer
+			'' boundary is handled by hStrArgToStrPtrParam(), mirroring
+			'' STRING -> ZString Ptr data-pointer exposure.  Other non-raw
+			'' sources still require explicit legacy WCHAR/NUL materialization.
+			if( arg_dtype <> FB_DATATYPE_WSTRING ) then
+				n->l = rtlWstrRawBoundary( n->l )
 			end if
 
 		case else
@@ -958,9 +1287,48 @@ private function hCheckParam _
 
 		if( typeIsPtr( param_dtype ) = FALSE ) then
 			n->l = astNewDEREF( n->l )
+		else
+			'' the adaptation yields a CONST-data pointer (StrPtr
+			'' semantics); retype it to the parameter's own pointer
+			'' type - the underlying storage is a conversion temporary,
+			'' so a mutable zstring/wstring ptr parameter must not
+			'' raise the const-drop pointer warning
+			n->l = astNewCONV( symbGetFullType( param ), _
+			                   symbGetSubType( param ), _
+			                   n->l, AST_CONVOPT_DONTWARNCONST )
 		end if
 
 		arg_dtype = astGetDatatype( n->l )
+
+	case FB_DATATYPE_WCHAR
+		'' Raw wide value (the legacy raw-WSTRING dtype).  Against
+		'' string-family parameters it keeps raw-WSTRING value semantics;
+		'' against anything else it is the 2-byte code unit it is typed
+		'' as, and the generic numeric conversion below applies.
+		select case param_dtype
+		'' zstring ptr / zstring param?
+		case typeAddrOf( FB_DATATYPE_CHAR ), FB_DATATYPE_CHAR
+			'' Wide raw value crossing into a raw ZSTRING boundary.
+			n->l = rtlToStr( n->l, FALSE )
+
+			hStrArgToStrPtrParam( parent, n, TRUE )
+			if( typeIsPtr( param_dtype ) = FALSE ) then
+				n->l = astNewDEREF( n->l )
+			end if
+			arg_dtype = astGetDatatype( n->l )
+
+		'' wstring ptr / wstring?
+		case typeAddrOf( FB_DATATYPE_WCHAR ), FB_DATATYPE_WCHAR
+			hStrArgToStrPtrParam( parent, n, TRUE )
+			if( typeIsPtr( param_dtype ) = FALSE ) then
+				n->l = astNewDEREF( n->l )
+			end if
+			arg_dtype = astGetDatatype( n->l )
+
+		case else
+			'' Numeric (or other non-string) parameter: the unit value
+			'' converts like any 2-byte integer; nothing to do here.
+		end select
 
 	'' UDT? implicit casting failed, can't convert..
 	case FB_DATATYPE_STRUCT ', FB_DATATYPE_CLASS
