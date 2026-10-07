@@ -1,0 +1,162 @@
+name: FreeBASIC-NG Build Matrix
+ 
+on:
+push:
+branches:
+- main
+- develop
+ 
+paths:
+- "src/**"
+- "inc/**"
+- "lib/**"
+- "bootstrap/**"
+- "cmake/**"
+- "tests/**"
+- "CMakeLists.txt"
+ 
+pull_request:
+branches:
+- main
+ 
+workflow_dispatch:
+ 
+permissions:
+contents: read
+ 
+concurrency:
+group: build-${{ github.ref }}
+cancel-in-progress: true
+ 
+jobs:
+ 
+build:
+ 
+strategy:
+fail-fast: false
+ 
+matrix:
+ 
+include:
+ 
+# Linux x64
+- name: linux-x64
+os: ubuntu-latest
+build_type: Release
+ 
+# Linux ARM64
+- name: linux-arm64
+os: ubuntu-24.04-arm
+ 
+# Windows x64
+- name: windows-x64
+os: windows-latest
+ 
+# Windows ARM64
+- name: windows-arm64
+os: windows-11-arm
+ 
+# macOS Intel
+- name: macos-x64
+os: macos-13
+ 
+# macOS Apple Silicon
+- name: macos-arm64
+os: macos-14
+ 
+runs-on: ${{ matrix.os }}
+ 
+steps:
+ 
+- name: Checkout
+uses: actions/checkout@v4
+ 
+- name: Setup Ninja
+uses: seanmiddleditch/gha-setup-ninja@v5
+ 
+- name: Setup Python
+uses: actions/setup-python@v5
+with:
+python-version: "3.x"
+ 
+#
+# Linux Dependencies
+#
+- name: Install Linux Packages
+if: runner.os == 'Linux'
+run: |
+sudo apt-get update
+sudo apt-get install -y \
+gcc \
+g++ \
+clang \
+cmake \
+ninja-build \
+libncurses-dev
+ 
+#
+# macOS Dependencies
+#
+- name: Install macOS Packages
+if: runner.os == 'macOS'
+run: |
+brew install ninja ncurses
+ 
+#
+# Windows Dependencies
+#
+- name: Setup MSYS2
+if: runner.os == 'Windows'
+uses: msys2/setup-msys2@v2
+with:
+update: true
+install: >
+mingw-w64-x86_64-gcc
+mingw-w64-x86_64-ninja
+mingw-w64-x86_64-cmake
+ 
+#
+# Configure
+#
+- name: Configure
+run: |
+cmake \
+-B build \
+-G Ninja \
+-DCMAKE_BUILD_TYPE=Release
+ 
+#
+# Build
+#
+- name: Build
+run: |
+cmake --build build --parallel
+ 
+#
+# Version Check
+#
+- name: Compiler Version
+shell: bash
+run: |
+find build -name fbc -type f | head -1 | xargs chmod +x || true
+find build -name fbc -type f | head -1 || true
+ 
+#
+# Test
+#
+- name: Run Tests
+continue-on-error: true
+run: |
+ctest \
+--test-dir build \
+--output-on-failure
+ 
+#
+# Package
+#
+- name: Archive
+uses: actions/upload-artifact@v4
+with:
+name: freebasic-ng-${{ matrix.name }}
+path: |
+build
